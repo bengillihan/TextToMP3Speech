@@ -301,11 +301,24 @@ async def _process_conversion(conversion_id):
         # Create a list to store the paths of the temporary audio files
         temp_audio_files = []
         
-        # Process chunks in parallel
+        # Process chunks in parallel with a limit on concurrent API calls
         try:
+            # Limit concurrent API calls to avoid rate limiting and improve reliability
+            MAX_PARALLEL_CALLS = 5  # Maximum number of concurrent API calls
+            
+            # Use a semaphore to limit concurrent API calls
+            semaphore = asyncio.Semaphore(MAX_PARALLEL_CALLS)
+            
+            async def process_with_semaphore(i, chunk):
+                async with semaphore:
+                    return await process_chunk(client, conversion_id, i, chunk, audio_dir, temp_audio_files)
+            
+            # Create tasks with semaphore protection
             tasks = []
+            total_chunks = len(chunks)
+            logger.info(f"Starting parallel processing of {total_chunks} chunks with max {MAX_PARALLEL_CALLS} concurrent calls")
             for i, chunk in enumerate(chunks):
-                tasks.append(process_chunk(client, conversion_id, i, chunk, audio_dir, temp_audio_files))
+                tasks.append(process_with_semaphore(i, chunk))
             
             # Wait for all tasks to complete
             await asyncio.gather(*tasks)
