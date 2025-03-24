@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Convert Text to Speech{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">Convert Text to Speech</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Enter Text</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('convert') }}">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        <label for="title" class="form-label">{{ form.title.label }}</label>
+                        {{ form.title(class="form-control", id="title", placeholder="Give your conversion a name") }}
+                        {% for error in form.title.errors %}
+                            <div class="text-danger">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="text" class="form-label">{{ form.text.label }}</label>
+                        {{ form.text(class="form-control conversion-text-area", id="text", placeholder="Type or paste your text here (max 100,000 characters)", rows=10) }}
+                        <div id="charCount" class="char-counter mt-1">0 / 100,000 characters</div>
+                        {% for error in form.text.errors %}
+                            <div class="text-danger">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6>Guidelines:</h6>
+                        <ul class="text-muted small">
+                            <li>Maximum text length is 100,000 characters</li>
+                            <li>Text will be automatically split into chunks for processing</li>
+                            <li>Larger texts will take longer to process</li>
+                            <li>For best results, ensure text is properly formatted with punctuation</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        {{ form.submit(class="btn btn-primary btn-lg") }}
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const textArea = document.getElementById('text');
+        const charCount = document.getElementById('charCount');
+        const MAX_CHARS = 100000;
+        
+        function updateCharCount() {
+            const currentLength = textArea.value.length;
+            charCount.textContent = `${currentLength} / ${MAX_CHARS} characters`;
+            
+            // Update the count color based on how close to the limit
+            if (currentLength > MAX_CHARS * 0.9) {
+                charCount.className = 'char-counter danger mt-1';
+            } else if (currentLength > MAX_CHARS * 0.7) {
+                charCount.className = 'char-counter warning mt-1';
+            } else {
+                charCount.className = 'char-counter mt-1';
+            }
+        }
+        
+        // Initial count
+        updateCharCount();
+        
+        // Update on input
+        textArea.addEventListener('input', updateCharCount);
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}My Conversions - Text to Speech Converter{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h1>My Conversions</h1>
+    </div>
+    <div class="col-md-6 text-md-end">
+        <a href="{{ url_for('convert') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> New Conversion
+        </a>
+        <button id="cleanup-btn" class="btn btn-outline-secondary">
+            <i class="fas fa-broom"></i> Cleanup Old Files
+        </button>
+    </div>
+</div>
+
+{% if conversions %}
+<div class="row">
+    {% for conversion in conversions %}
+    <div class="col-md-6 mb-4">
+        <div class="card conversion-card h-100" data-conversion-uuid="{{ conversion.uuid }}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 text-truncate" title="{{ conversion.title }}">{{ conversion.title }}</h5>
+                <span class="badge status-badge bg-{{ conversion.status }}" data-status="{{ conversion.status }}">
+                    {{ conversion.status|capitalize }}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <p class="mb-1"><strong>Created:</strong> {{ conversion.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                    <p class="mb-1"><strong>Text Length:</strong> {{ conversion.text|length }} characters</p>
+                    {% if conversion.metrics %}
+                    <p class="mb-1"><strong>Chunks:</strong> {{ conversion.metrics.chunk_count }}</p>
+                    {% if conversion.metrics.total_time %}
+                    <p class="mb-1"><strong>Processing Time:</strong> {{ '%.1f'|format(conversion.metrics.total_time) }} seconds</p>
+                    {% endif %}
+                    {% endif %}
+                </div>
+                
+                <div class="mb-3">
+                    <div class="progress">
+                        <div class="progress-bar {% if conversion.status == 'processing' %}progress-bar-striped progress-bar-animated{% endif %}" 
+                             role="progressbar" 
+                             style="width: {{ conversion.progress }}%;" 
+                             aria-valuenow="{{ conversion.progress }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                             {% if conversion.progress > 0 %}{{ conversion.progress|int }}%{% endif %}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="text-preview">
+                    <h6>Text Preview:</h6>
+                    <div class="card bg-dark">
+                        <div class="card-body">
+                            <p class="text-muted mb-0">{{ conversion.text[:100] }}{% if conversion.text|length > 100 %}...{% endif %}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="d-flex justify-content-between">
+                    {% if conversion.status == 'completed' %}
+                    <a href="{{ url_for('download_conversion', uuid=conversion.uuid) }}" class="btn btn-success download-btn">
+                        <i class="fas fa-download"></i> Download MP3
+                    </a>
+                    {% elif conversion.status in ['pending', 'processing'] %}
+                    <button class="btn btn-danger cancel-btn" data-uuid="{{ conversion.uuid }}">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    {% elif conversion.status == 'failed' %}
+                    <a href="{{ url_for('convert') }}" class="btn btn-warning">
+                        <i class="fas fa-redo"></i> Try Again
+                    </a>
+                    {% else %}
+                    <button class="btn btn-secondary" disabled>
+                        <i class="fas fa-ban"></i> Cancelled
+                    </button>
+                    {% endif %}
+                    
+                    <small class="text-muted align-self-center">
+                        Last updated: {{ conversion.updated_at.strftime('%H:%M:%S') }}
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="fas fa-file-audio fa-4x mb-3 text-muted"></i>
+                <h3>No conversions yet</h3>
+                <p class="text-muted">You haven't created any text-to-speech conversions yet.</p>
+                <a href="{{ url_for('convert') }}" class="btn btn-primary mt-3">
+                    <i class="fas fa-plus"></i> Create Your First Conversion
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

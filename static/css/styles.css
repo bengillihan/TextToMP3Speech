@@ -1,0 +1,104 @@
+/* Custom styles for the Text-to-Speech application */
+
+/* Status badge colors - these override Bootstrap defaults */
+.status-badge.bg-pending {
+    background-color: var(--bs-warning);
+}
+
+.status-badge.bg-processing {
+    background-color: var(--bs-primary);
+}
+
+.status-badge.bg-completed {
+    background-color: var(--bs-success);
+}
+
+.status-badge.bg-failed {
+    background-color: var(--bs-danger);
+}
+
+.status-badge.bg-cancelled {
+    background-color: var(--bs-secondary);
+}
+
+/* Make the text area for conversion properly sized */
+.conversion-text-area {
+    min-height: 300px;
+    font-family: monospace;
+}
+
+/* Character counter */
+.char-counter {
+    font-size: 0.8rem;
+    text-align: right;
+    color: var(--bs-secondary);
+}
+
+.char-counter.warning {
+    color: var(--bs-warning);
+}
+
+.char-counter.danger {
+    color: var(--bs-danger);
+}
+
+/* Progress bar animation */
+.progress-bar.active {
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+/* Custom card styles */
+.conversion-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.conversion-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Dashboard stats */
+.stats-card {
+    border-left: 4px solid;
+}
+
+.stats-card.stats-total {
+    border-color: var(--bs-primary);
+}
+
+.stats-card.stats-completed {
+    border-color: var(--bs-success);
+}
+
+.stats-card.stats-processing {
+    border-color: var(--bs-info);
+}
+
+.stats-card.stats-failed {
+    border-color: var(--bs-danger);
+}
+
+/* Toast container for notifications */
+.toast-container {
+    z-index: 1100;
+}
+
+/* Custom styling for the hero section */
+.hero {
+    background: linear-gradient(135deg, var(--bs-primary), var(--bs-dark));
+    padding: 3rem 0;
+    color: white;
+}
+
+/* Add responsive font sizes */
+@media (max-width: 768px) {
+    .h1, h1 {
+        font-size: 1.8rem;
+    }
+    .h2, h2 {
+        font-size: 1.5rem;
+    }
+    .hero {
+        padding: 2rem 0;
+    }
+}

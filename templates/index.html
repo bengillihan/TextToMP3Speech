@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Text to Speech Converter - Home{% endblock %}
+
+{% block content %}
+<section class="hero text-center rounded">
+    <div class="container">
+        <h1 class="display-4 mb-4">Text to Speech Converter</h1>
+        <p class="lead">Transform your text into natural-sounding speech with OpenAI's advanced TTS technology</p>
+        {% if not current_user.is_authenticated %}
+        <div class="mt-4">
+            <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg me-2">Get Started</a>
+            <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Login</a>
+        </div>
+        {% else %}
+        <div class="mt-4">
+            <a href="{{ url_for('convert') }}" class="btn btn-primary btn-lg">Start Converting</a>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<section class="mt-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-file-audio fa-3x mb-3 text-primary"></i>
+                        <h3 class="card-title">Large Text Support</h3>
+                        <p class="card-text">Convert up to 100,000 characters at once with automatic text chunking.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-bolt fa-3x mb-3 text-primary"></i>
+                        <h3 class="card-title">Super Fast</h3>
+                        <p class="card-text">Parallel processing for maximum performance and minimum wait times.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-headphones fa-3x mb-3 text-primary"></i>
+                        <h3 class="card-title">High Quality</h3>
+                        <p class="card-text">Powered by OpenAI's TTS-1 model for natural, high-quality speech.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="mt-5">
+    <div class="container">
+        <h2 class="text-center mb-4">How It Works</h2>
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body">
+                        <ol class="list-group list-group-numbered mb-0">
+                            <li class="list-group-item border-0">Create an account or log in to your existing account</li>
+                            <li class="list-group-item border-0">Enter or paste your text (up to 100,000 characters)</li>
+                            <li class="list-group-item border-0">Click "Convert to Speech" and wait for processing</li>
+                            <li class="list-group-item border-0">Download your MP3 file when the conversion is complete</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

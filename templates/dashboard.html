@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Text to Speech Converter{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">Dashboard</h1>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card stats-total">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle text-muted">Total Conversions</h6>
+                        <h2 class="card-title mb-0">{{ conversions|length }}</h2>
+                    </div>
+                    <div class="fs-1 text-muted">
+                        <i class="fas fa-file-audio"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% set completed = conversions|selectattr('status', 'equalto', 'completed')|list|length %}
+    {% set processing = conversions|selectattr('status', 'in', ['pending', 'processing'])|list|length %}
+    {% set failed = conversions|selectattr('status', 'in', ['failed', 'cancelled'])|list|length %}
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card stats-completed">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle text-muted">Completed</h6>
+                        <h2 class="card-title mb-0">{{ completed }}</h2>
+                    </div>
+                    <div class="fs-1 text-muted">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card stats-processing">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle text-muted">In Progress</h6>
+                        <h2 class="card-title mb-0">{{ processing }}</h2>
+                    </div>
+                    <div class="fs-1 text-muted">
+                        <i class="fas fa-spinner"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card stats-failed">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle text-muted">Failed/Cancelled</h6>
+                        <h2 class="card-title mb-0">{{ failed }}</h2>
+                    </div>
+                    <div class="fs-1 text-muted">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Conversions</h5>
+                <div>
+                    <a href="{{ url_for('convert') }}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> New Conversion
+                    </a>
+                    <a href="{{ url_for('conversions') }}" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-list"></i> View All
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if conversions %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Progress</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for conversion in conversions %}
+                            <tr data-conversion-uuid="{{ conversion.uuid }}">
+                                <td>{{ conversion.title }}</td>
+                                <td>
+                                    <span class="badge status-badge bg-{{ conversion.status }}" data-status="{{ conversion.status }}">
+                                        {{ conversion.status|capitalize }}
+                                    </span>
+                                </td>
+                                <td>{{ conversion.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td style="width: 30%;">
+                                    <div class="progress">
+                                        <div class="progress-bar {% if conversion.status == 'processing' %}progress-bar-striped progress-bar-animated{% endif %}" 
+                                             role="progressbar" 
+                                             style="width: {{ conversion.progress }}%;" 
+                                             aria-valuenow="{{ conversion.progress }}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                             {% if conversion.progress > 0 %}{{ conversion.progress|int }}%{% endif %}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if conversion.status == 'completed' %}
+                                    <a href="{{ url_for('download_conversion', uuid=conversion.uuid) }}" class="btn btn-success btn-sm download-btn">
+                                        <i class="fas fa-download"></i> Download
+                                    </a>
+                                    {% elif conversion.status in ['pending', 'processing'] %}
+                                    <button class="btn btn-danger btn-sm cancel-btn" data-uuid="{{ conversion.uuid }}">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                    {% elif conversion.status == 'failed' %}
+                                    <a href="{{ url_for('convert') }}" class="btn btn-warning btn-sm">
+                                        <i class="fas fa-redo"></i> Retry
+                                    </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <p class="mb-3 text-muted">You haven't created any conversions yet.</p>
+                    <a href="{{ url_for('convert') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Your First Conversion
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('convert') }}" class="btn btn-primary">
+                        <i class="fas fa-microphone"></i> New Conversion
+                    </a>
+                    <button id="cleanup-btn" class="btn btn-outline-secondary">
+                        <i class="fas fa-broom"></i> Cleanup Old Files
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
