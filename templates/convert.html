@@ -21,7 +21,7 @@
                     
                     <div class="mb-3">
                         <label for="title" class="form-label">{{ form.title.label }}</label>
-                        {{ form.title(class="form-control", id="title", placeholder="Give your conversion a name") }}
+                        {{ form.title(class="form-control", id="title", placeholder="Give your conversion a name (first line of text will be used by default)") }}
                         {% for error in form.title.errors %}
                             <div class="text-danger">{{ error }}</div>
                         {% endfor %}
@@ -61,8 +61,27 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const textArea = document.getElementById('text');
+        const titleField = document.getElementById('title');
         const charCount = document.getElementById('charCount');
         const MAX_CHARS = 100000;
+        
+        // Get title from the first line of text
+        function updateTitleFromText() {
+            const text = textArea.value;
+            // If title is empty or hasn't been manually edited, set it from first line
+            if (!titleField.dataset.userEdited) {
+                if (text) {
+                    // Get the first line, limited to 256 characters (the title field max length)
+                    let firstLine = text.split('\n')[0].trim();
+                    if (firstLine.length > 256) {
+                        firstLine = firstLine.substring(0, 256);
+                    }
+                    if (firstLine) {
+                        titleField.value = firstLine;
+                    }
+                }
+            }
+        }
         
         function updateCharCount() {
             const currentLength = textArea.value.length;
@@ -76,9 +95,25 @@
             } else {
                 charCount.className = 'char-counter mt-1';
             }
+            
+            // Also update the title if needed
+            updateTitleFromText();
         }
         
-        // Initial count
+        // Mark the title as user-edited if user types in it
+        titleField.addEventListener('input', function() {
+            titleField.dataset.userEdited = 'true';
+        });
+        
+        // If user clears the title, unmark it as user-edited
+        titleField.addEventListener('change', function() {
+            if (!titleField.value.trim()) {
+                delete titleField.dataset.userEdited;
+                updateTitleFromText();
+            }
+        });
+        
+        // Initial count and title update
         updateCharCount();
         
         // Update on input

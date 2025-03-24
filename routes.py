@@ -54,10 +54,20 @@ def dashboard():
 def convert():
     form = ConversionForm()
     if form.validate_on_submit():
+        # Use the first line of text as the title if no title was provided
+        title = form.title.data
+        if not title.strip():
+            # Extract the first line, limited to 256 characters
+            first_line = form.text.data.split('\n')[0].strip()
+            if first_line:
+                title = first_line[:256]
+            else:
+                title = "Untitled Conversion"
+        
         # Create new conversion record
         conversion = Conversion(
             user_id=current_user.id,
-            title=form.title.data,
+            title=title,
             text=form.text.data,
             status='pending',
             progress=0.0

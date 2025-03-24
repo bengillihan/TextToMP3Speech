@@ -41,6 +41,15 @@ db.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'google_auth.login'
 
+# Display the Google OAuth redirect URI that needs to be registered
+domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
+if domain:
+    redirect_uri = f"https://{domain}/google_login/callback"
+    logger.info("="*80)
+    logger.info(f"IMPORTANT: Register this OAuth redirect URI in Google Cloud Console:")
+    logger.info(f"{redirect_uri}")
+    logger.info("="*80)
+
 # Import models (must be imported after db initialization)
 with app.app_context():
     # Import models and routes

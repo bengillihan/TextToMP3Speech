@@ -28,16 +28,22 @@ def login():
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
 
     # Use library to construct the request for Google login
+    # Get the domain from environment variables
+    domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
+    # Construct the redirect URI using the domain to avoid mismatches
+    redirect_uri = f"https://{domain}/google_login/callback" if domain else request.base_url.replace("http://", "https://") + "/callback"
+    
+    print(f"Using redirect URI: {redirect_uri}")
+    
     request_uri = client.prepare_request_uri(
         authorization_endpoint,
-        # Make sure to replace http:// with https:// for the redirect URI
-        redirect_uri=request.base_url.replace("http://", "https://") + "/callback",
+        redirect_uri=redirect_uri,
         scope=["openid", "email", "profile"],
     )
     return redirect(request_uri)
 
 
-@google_auth.route("/login/callback")
+@google_auth.route("/callback")
 def callback():
     """Google login callback route"""
     # Get authorization code Google sent back
@@ -47,11 +53,18 @@ def callback():
     google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
     token_endpoint = google_provider_cfg["token_endpoint"]
     
+    # Get the domain from environment variables
+    domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
+    # Construct the redirect URI using the domain to avoid mismatches
+    redirect_url = f"https://{domain}/google_login/callback" if domain else request.base_url.replace("http://", "https://")
+    
+    print(f"Using callback redirect URL: {redirect_url}")
+    
     # Prepare and send a request to get tokens
     token_url, headers, body = client.prepare_token_request(
         token_endpoint,
         authorization_response=request.url.replace("http://", "https://"),
-        redirect_url=request.base_url.replace("http://", "https://"),
+        redirect_url=redirect_url,
         code=code
     )
     # Ensure client ID and secret are not None
