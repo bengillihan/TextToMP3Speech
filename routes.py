@@ -251,7 +251,7 @@ def internal_error(error):
 @app.route('/api_health_check')
 @login_required
 def api_health_check():
-    """Check if the OpenAI API is working properly"""
+    """Check if the OpenAI API is working properly (authenticated)"""
     try:
         from openai import OpenAI
         api_key = app.config.get("OPENAI_API_KEY")
