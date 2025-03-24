@@ -366,6 +366,60 @@ def openai_diagnostic():
         }), 500
 
 
+@app.route('/diagnostic/conversion/<uuid>')
+def conversion_diagnostic(uuid):
+    """Diagnostic endpoint to get detailed conversion information - does not require authentication"""
+    try:
+        conversion = Conversion.query.filter_by(uuid=uuid).first()
+        if not conversion:
+            return jsonify({'error': 'Conversion not found'}), 404
+        
+        # Get logs for this conversion
+        logs = APILog.query.filter_by(conversion_id=conversion.id).order_by(APILog.timestamp.desc()).limit(20).all()
+        log_data = [{
+            'type': log.type,
+            'message': log.message,
+            'chunk_index': log.chunk_index,
+            'status': log.status,
+            'timestamp': format_seattle_time(log.timestamp)
+        } for log in logs]
+        
+        # Get metrics if available
+        metrics_data = None
+        if conversion.metrics:
+            metrics_data = {
+                'chunking_time': conversion.metrics.chunking_time,
+                'api_time': conversion.metrics.api_time,
+                'combining_time': conversion.metrics.combining_time,
+                'total_time': conversion.metrics.total_time,
+                'chunk_count': conversion.metrics.chunk_count,
+                'total_tokens': conversion.metrics.total_tokens
+            }
+        
+        return jsonify({
+            'conversion': {
+                'id': conversion.id,
+                'uuid': conversion.uuid,
+                'user_id': conversion.user_id,
+                'title': conversion.title,
+                'text_length': len(conversion.text) if conversion.text else 0,
+                'voice': conversion.voice,
+                'status': conversion.status,
+                'progress': conversion.progress,
+                'file_path': conversion.file_path,
+                'created_at': format_seattle_time(conversion.created_at),
+                'updated_at': format_seattle_time(conversion.updated_at)
+            },
+            'metrics': metrics_data,
+            'logs': log_data
+        })
+    except Exception as e:
+        logger.error(f"Error getting conversion diagnostic for {uuid}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error getting conversion diagnostic: {str(e)}'
+        }), 500
+
 @app.route('/diagnostic/restart_conversion/<uuid>')
 def restart_conversion_diagnostic(uuid):
     """Diagnostic endpoint to restart a conversion - does not require authentication"""

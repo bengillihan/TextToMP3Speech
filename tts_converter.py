@@ -451,18 +451,53 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                     # Make the API call and write directly to a file
                     logger.info(f"Making OpenAI TTS API call for chunk {chunk_index} with voice: {voice}")
                     logger.info(f"Text length for chunk {chunk_index}: {len(text)} characters")
+                    
+                    # Log in database that we're starting the API call
+                    db.session.add(APILog(
+                        conversion_id=conversion_id,
+                        type='info',
+                        message=f"Starting API call for chunk {chunk_index}",
+                        chunk_index=chunk_index
+                    ))
+                    db.session.commit()
+                    
+                    api_start_time = time.time()
                     try:
+                        # Make the API call
                         response = await client.audio.speech.create(
                             model="tts-1",
                             voice=voice,
                             input=text
                         )
-                        logger.info(f"OpenAI TTS API call successful for chunk {chunk_index}")
+                        api_time = time.time() - api_start_time
+                        logger.info(f"OpenAI TTS API call successful for chunk {chunk_index} in {api_time:.2f} seconds")
+                        
+                        # Log API call success in database
+                        db.session.add(APILog(
+                            conversion_id=conversion_id,
+                            type='info',
+                            message=f"API call completed in {api_time:.2f} seconds for chunk {chunk_index}",
+                            chunk_index=chunk_index,
+                            status=200
+                        ))
+                        db.session.commit()
                         logger.info(f"Response type: {type(response).__name__}")
                         logger.info(f"Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
                     except Exception as api_error:
                         logger.error(f"OpenAI TTS API call failed for chunk {chunk_index}: {str(api_error)}")
                         logger.error(f"Traceback: {traceback.format_exc()}")
+                        
+                        # Log API error to database
+                        db.session.add(APILog(
+                            conversion_id=conversion_id,
+                            type='error',
+                            message=f"API call failed: {str(api_error)}",
+                            chunk_index=chunk_index,
+                            status=500
+                        ))
+                        db.session.commit()
+                        
+                        # We're raising to trigger retry logic
                         raise
                     
                     # Most reliable method for AsyncOpenAI TTS

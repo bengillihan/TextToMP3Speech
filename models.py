@@ -41,7 +41,8 @@ class Conversion(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    metrics = db.relationship('ConversionMetrics', backref='conversion', uselist=False, cascade="all, delete-orphan")
+    metrics = db.relationship('ConversionMetrics', backref='conversion', uselist=False, 
+                             cascade="all, delete-orphan")
     logs = db.relationship('APILog', backref='conversion', lazy='dynamic', cascade="all, delete-orphan")
 
     def __repr__(self):
