@@ -386,6 +386,10 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                 logger.info(f"Chunk {chunk_index} cancelled for conversion_id: {conversion_id}")
                 return
             
+            # Get the voice from the conversion record
+            voice = conversion.voice if conversion.voice else "onyx"
+            logger.info(f"Using voice '{voice}' for chunk {chunk_index}")
+            
             # Log OpenAI API key status (without revealing the key)
             logger.info(f"Checking OpenAI API key for chunk {chunk_index}")
             api_key = app.config.get("OPENAI_API_KEY")
@@ -418,7 +422,7 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                     # Make the API call and write directly to a file
                     response = await client.audio.speech.create(
                         model="tts-1",
-                        voice="alloy",
+                        voice=voice,
                         input=text
                     )
                     
