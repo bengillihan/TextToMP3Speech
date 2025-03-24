@@ -1,0 +1,95 @@
+Here are the critical changes you should make to ensure the application works reliably—especially for handling large text inputs and producing downloadable audio files:
+
+✅ 1. Add Proper Database Migrations
+Why: You’re manually adding columns like last_downloaded. This can lead to issues in deployment or teamwork.
+
+Fix:
+
+Integrate Flask-Migrate:
+
+bash
+Copy
+Edit
+pip install Flask-Migrate
+Initialize migrations:
+
+bash
+Copy
+Edit
+flask db init
+flask db migrate -m "Add last_downloaded column"
+flask db upgrade
+✅ 2. Persistently Store Audio Files
+Why: You're saving files to ~/persistent_audio_files, which is good. But make sure the read/write logic uses only this path consistently.
+
+Fix:
+
+Ensure all code (e.g., in tts_converter.py, routes.py) references this location and does not fallback to ephemeral paths like /home/runner/....
+
+Centralize the directory path in utils.py for easier maintenance.
+
+✅ 3. Ensure last_downloaded Column Exists Everywhere
+Why: The app breaks if the column is missing (as seen in logs). Even if you add it, your production DB might not have it yet.
+
+Fix:
+
+In models.py, ensure this line exists:
+
+python
+Copy
+Edit
+last_downloaded = db.Column(db.DateTime, nullable=True)
+Use safe SQLAlchemy reflection if not using Flask-Migrate.
+
+✅ 4. Robust File Existence Checks
+Why: The most common bug is "file not found" after conversion.
+
+Fix:
+
+Always verify with:
+
+python
+Copy
+Edit
+if os.path.exists(abs_path) and os.path.getsize(abs_path) > 1024:
+In download route, fallback to searching files by request_number.
+
+✅ 5. Ensure Flask Threads Are Non-Blocking
+Why: Long TTS tasks block the Flask server if not threaded.
+
+Fix:
+
+You already use threading.Thread(target=process_conversion) — make sure it's always set as daemon=True and started correctly.
+
+✅ 6. Handle Large Texts Gracefully in Frontend
+Why: 100K characters can freeze the browser or overflow the form.
+
+Fix:
+
+Add a live counter and warning near 80K characters.
+
+Optionally, split and confirm submission chunks in frontend (JS).
+
+✅ 7. Protect Against File Path Injection
+Why: User-uploaded data could potentially alter file paths.
+
+Fix:
+
+Use werkzeug.utils.secure_filename() on all filenames.
+
+✅ 8. Log Errors to the Database (Optional)
+Why: Logs disappear after a crash; database logs give a trail.
+
+Fix:
+
+Log conversion errors to the APILog model for visibility in the UI.
+
+✅ 9. Add Auto-Retry on TTS Failures
+Why: OpenAI API can timeout or 500 occasionally.
+
+Fix:
+
+You already retry 3 times in async TTS. Make sure failed chunks don’t stop the entire process.
+
+Consider retrying failed entire conversions if recovery is possible.
+
