@@ -10,7 +10,7 @@ from app import app, db
 from forms import LoginForm, RegistrationForm, ConversionForm
 from models import User, Conversion, ConversionMetrics, APILog
 from tts_converter import process_conversion, cancel_conversion
-from utils import cleanup_old_files
+from utils import cleanup_old_files, format_seattle_time
 
 logger = logging.getLogger(__name__)
 
@@ -199,17 +199,17 @@ def conversion_progress(uuid):
             .limit(5)\
             .all()
         
-        # Format logs for the response
+        # Format logs for the response with Seattle time (GMT-8)
         logs = [{
             'type': log.type,
             'message': log.message,
-            'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            'timestamp': format_seattle_time(log.timestamp, '%Y-%m-%d %H:%M:%S')
         } for log in recent_logs]
         
         return jsonify({
             'status': conversion.status,
             'progress': conversion.progress,
-            'updated_at': conversion.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': format_seattle_time(conversion.updated_at, '%Y-%m-%d %H:%M:%S'),
             'logs': logs
         })
     except Exception as e:
