@@ -51,7 +51,10 @@ def logout():
 @login_required
 def dashboard():
     recent_conversions = Conversion.query.filter_by(user_id=current_user.id).order_by(Conversion.created_at.desc()).limit(5).all()
-    return render_template('dashboard.html', title='Dashboard', conversions=recent_conversions)
+    return render_template('dashboard.html', 
+                          title='Dashboard', 
+                          conversions=recent_conversions,
+                          format_seattle_time=format_seattle_time)
 
 
 @app.route('/convert', methods=['GET', 'POST'])
@@ -133,7 +136,11 @@ def convert():
 @login_required
 def conversions():
     user_conversions = Conversion.query.filter_by(user_id=current_user.id).order_by(Conversion.created_at.desc()).all()
-    return render_template('conversions.html', title='My Conversions', conversions=user_conversions)
+    # Pass the format_seattle_time utility to the template
+    return render_template('conversions.html', 
+                          title='My Conversions', 
+                          conversions=user_conversions,
+                          format_seattle_time=format_seattle_time)
 
 
 @app.route('/conversion/<uuid>/progress')

@@ -30,7 +30,7 @@
             </div>
             <div class="card-body">
                 <div class="mb-3">
-                    <p class="mb-1"><strong>Created:</strong> {{ conversion.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                    <p class="mb-1"><strong>Created:</strong> {{ format_seattle_time(conversion.created_at, '%Y-%m-%d %H:%M') }} (Seattle time)</p>
                     <p class="mb-1"><strong>Text Length:</strong> {{ conversion.text|length }} characters</p>
                     {% if conversion.metrics %}
                     <p class="mb-1"><strong>Chunks:</strong> {{ conversion.metrics.chunk_count }}</p>
@@ -83,7 +83,7 @@
                     {% endif %}
                     
                     <small class="text-muted align-self-center">
-                        Last updated: {{ conversion.updated_at.strftime('%H:%M:%S') }}
+                        Last updated: {{ format_seattle_time(conversion.updated_at, '%H:%M:%S') }}
                     </small>
                 </div>
             </div>

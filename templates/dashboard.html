@@ -111,7 +111,7 @@
                                         {{ conversion.status|capitalize }}
                                     </span>
                                 </td>
-                                <td>{{ conversion.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ format_seattle_time(conversion.created_at, '%Y-%m-%d %H:%M') }} (Seattle time)</td>
                                 <td style="width: 30%;">
                                     <div class="progress">
                                         <div class="progress-bar {% if conversion.status == 'processing' %}progress-bar-striped progress-bar-animated{% endif %}" 
