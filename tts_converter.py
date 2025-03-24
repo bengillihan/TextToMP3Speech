@@ -110,20 +110,30 @@ async def _process_conversion(conversion_id):
         
         # Split text into chunks of 4000 characters or less
         text = conversion.text
+        logger.info(f"Starting text chunking for conversion {conversion_id}, text length: {len(text)} characters")
         chunks = []
+        max_chunk_size = 4000
         
         # Try to split at sentence boundaries
+        logger.info("Splitting text at sentence boundaries")
         sentences = text.replace('\n', ' ').split('. ')
+        logger.info(f"Split text into {len(sentences)} sentence fragments")
+        
         current_chunk = ""
         
-        for sentence in sentences:
+        for i, sentence in enumerate(sentences):
             # Add period back except for the last sentence if it doesn't end with period
             if sentence != sentences[-1] or text.endswith('.'):
                 sentence += '.'
             
+            # Log every 50 sentences to avoid excessive logging
+            if i % 50 == 0:
+                logger.debug(f"Processing sentence {i+1}/{len(sentences)}, length: {len(sentence)} characters")
+            
             # If adding this sentence would exceed chunk size, store current chunk and start a new one
-            if len(current_chunk) + len(sentence) > 4000:
+            if len(current_chunk) + len(sentence) > max_chunk_size:
                 chunks.append(current_chunk.strip())
+                logger.debug(f"Added chunk {len(chunks)} with length {len(current_chunk.strip())} characters")
                 current_chunk = sentence + " "
             else:
                 current_chunk += sentence + " "
@@ -131,10 +141,38 @@ async def _process_conversion(conversion_id):
         # Add the last chunk if not empty
         if current_chunk.strip():
             chunks.append(current_chunk.strip())
+            logger.debug(f"Added final chunk {len(chunks)} with length {len(current_chunk.strip())} characters")
         
         chunking_end = time.time()
         metrics.chunking_time = chunking_end - chunking_start
         metrics.chunk_count = len(chunks)
+        
+        # Log chunking details
+        logger.info(f"Text chunking complete. Created {len(chunks)} chunks")
+        if chunks:
+            logger.info(f"Chunks range in size from {min(len(chunk) for chunk in chunks)} " +
+                      f"to {max(len(chunk) for chunk in chunks)} characters")
+        else:
+            logger.error("No chunks were created from the input text!")
+            
+        # Count tokens (words) for metrics
+        word_count = sum(len(chunk.split()) for chunk in chunks)
+        metrics.total_tokens = word_count
+        logger.info(f"Total words: {word_count}, chunking time: {metrics.chunking_time:.2f} seconds")
+        
+        # Verify that we have chunks to process
+        if not chunks:
+            error_message = "No chunks were created from the input text"
+            logger.error(error_message)
+            conversion.status = 'failed'
+            db.session.add(APILog(
+                conversion_id=conversion_id,
+                type='error',
+                message=error_message
+            ))
+            db.session.commit()
+            return
+            
         db.session.commit()
         
         # Check if the user has cancelled the conversion
@@ -343,12 +381,45 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
             # Save the audio data to a temporary file
             temp_file_path = os.path.join(audio_dir, f"{chunk_index}_chunk.mp3")
             try:
-                with open(temp_file_path, 'wb') as f:
-                    # The response is a bytes object, so we can write it directly to a file
-                    logger.info(f"Reading response data for chunk {chunk_index}")
-                    audio_data = await response.read()
-                    logger.info(f"Writing {len(audio_data)} bytes to file for chunk {chunk_index}")
-                    f.write(audio_data)
+                logger.info(f"Processing response for chunk {chunk_index}")
+                
+                # Identify the response type
+                response_type = type(response).__name__
+                logger.info(f"Response type: {response_type}")
+                
+                # Handle HttpxBinaryResponseContent from AsyncOpenAI
+                if response_type == 'HttpxBinaryResponseContent':
+                    logger.info("Handling HttpxBinaryResponseContent")
+                    # Use the read() method (not awaited) to get the bytes content
+                    audio_data = response.read()
+                    logger.info(f"Read {len(audio_data)} bytes from HttpxBinaryResponseContent")
+                    
+                    with open(temp_file_path, 'wb') as f:
+                        f.write(audio_data)
+                
+                # Handle bytes directly
+                elif isinstance(response, bytes):
+                    logger.info(f"Response is bytes, writing {len(response)} bytes to file")
+                    with open(temp_file_path, 'wb') as f:
+                        f.write(response)
+                
+                # Handle any other response type
+                else:
+                    logger.warning(f"Unknown response type: {response_type}, attempting multiple methods")
+                    # Try multiple methods to extract data
+                    if hasattr(response, 'read'):
+                        logger.info("Using read() method")
+                        with open(temp_file_path, 'wb') as f:
+                            f.write(response.read())
+                    elif hasattr(response, 'content'):
+                        logger.info("Using content attribute")
+                        with open(temp_file_path, 'wb') as f:
+                            f.write(response.content)
+                    else:
+                        logger.warning("No standard methods available, trying direct write")
+                        with open(temp_file_path, 'wb') as f:
+                            f.write(response)
+                
                 logger.info(f"Audio file saved successfully for chunk {chunk_index}")
             except Exception as e:
                 logger.error(f"Error saving audio file: {str(e)}")
