@@ -149,8 +149,12 @@ async def _process_conversion(conversion_id):
         audio_dir = os.path.join(app.config["AUDIO_STORAGE_PATH"], str(uuid.uuid4()))
         os.makedirs(audio_dir, exist_ok=True)
         
-        # Set up OpenAI client
-        client = AsyncOpenAI(api_key=app.config["OPENAI_API_KEY"])
+        # Set up OpenAI client with timeout
+        client = AsyncOpenAI(
+            api_key=app.config["OPENAI_API_KEY"],
+            timeout=60.0  # 60 second timeout for API calls
+        )
+        logger.info("AsyncOpenAI client created with timeout settings")
         
         # Create a list to store the paths of the temporary audio files
         temp_audio_files = []
@@ -287,18 +291,49 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
             logger.info("OpenAI API key is available")
             
             logger.info(f"Calling OpenAI API for chunk {chunk_index}, conversion_id: {conversion_id}")
-            # Call the OpenAI API to generate speech
-            try:
-                response = await client.audio.speech.create(
-                    model="tts-1",
-                    voice="alloy",  # You can change this to other available voices
-                    input=text
-                )
-                logger.info(f"OpenAI API call successful for chunk {chunk_index}, conversion_id: {conversion_id}")
-            except Exception as e:
-                logger.error(f"OpenAI API call failed: {str(e)}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                raise
+            # Call the OpenAI API to generate speech with retries and exponential backoff
+            max_retries = 3
+            retry_delay = 1.0  # initial delay in seconds
+            
+            for retry in range(max_retries + 1):  # +1 for the initial attempt
+                try:
+                    if retry > 0:
+                        logger.warning(f"Retry {retry}/{max_retries} for chunk {chunk_index} after {retry_delay:.1f}s delay")
+                        # Wait with exponential backoff
+                        await asyncio.sleep(retry_delay)
+                        # Double the delay for the next retry (exponential backoff)
+                        retry_delay *= 2
+                    
+                    # Make the API call
+                    response = await client.audio.speech.create(
+                        model="tts-1",
+                        voice="alloy",  # You can change this to other available voices
+                        input=text
+                    )
+                    logger.info(f"OpenAI API call successful for chunk {chunk_index}, conversion_id: {conversion_id}")
+                    
+                    # If we get here, the call was successful, so break out of the retry loop
+                    break
+                    
+                except Exception as e:
+                    logger.error(f"OpenAI API call failed: {str(e)}")
+                    
+                    # Log to the database
+                    with app.app_context():
+                        db.session.add(APILog(
+                            conversion_id=conversion_id,
+                            type='warning',
+                            message=f"API call failed for chunk {chunk_index}: {str(e)}",
+                            chunk_index=chunk_index,
+                            status=500
+                        ))
+                        db.session.commit()
+                    
+                    # If this was our last retry attempt, log and raise
+                    if retry == max_retries:
+                        logger.error(f"All retries failed for chunk {chunk_index}. Giving up.")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        raise
             
             # Check if the conversion was cancelled during the API call
             if should_cancel(conversion_id):

@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 @app.route('/')
 def index():
+    # Check and log the OpenAI API key status on app startup for debugging
+    api_key = app.config.get("OPENAI_API_KEY")
+    logger.info(f"OpenAI API key status: {'Available and valid format' if api_key and api_key.startswith('sk-') else 'Missing or invalid format'}")
+    
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     return render_template('index.html', title='Text to Speech Converter')
@@ -81,6 +85,7 @@ def convert():
             
             # Check if OpenAI API key is available
             api_key = app.config.get("OPENAI_API_KEY")
+            logger.info(f"OpenAI API key status: {'Available' if api_key else 'Missing'}")
             if not api_key:
                 logger.error("OpenAI API key is missing")
                 flash('Conversion failed: OpenAI API key is missing. Please contact the administrator.', 'danger')
@@ -89,6 +94,19 @@ def convert():
                     conversion_id=conversion.id,
                     type='error',
                     message="OpenAI API key is missing"
+                ))
+                db.session.commit()
+                return redirect(url_for('conversions'))
+            
+            # Verify key format looks valid (without revealing it)
+            if not api_key.startswith('sk-'):
+                logger.error("OpenAI API key format appears invalid")
+                flash('Conversion failed: OpenAI API key format is invalid. Please contact the administrator.', 'danger')
+                conversion.status = 'failed'
+                db.session.add(APILog(
+                    conversion_id=conversion.id,
+                    type='error',
+                    message="OpenAI API key format appears invalid"
                 ))
                 db.session.commit()
                 return redirect(url_for('conversions'))
@@ -228,3 +246,44 @@ def not_found_error(error):
 def internal_error(error):
     db.session.rollback()
     return render_template('500.html'), 500
+
+
+@app.route('/api_health_check')
+@login_required
+def api_health_check():
+    """Check if the OpenAI API is working properly"""
+    try:
+        from openai import OpenAI
+        api_key = app.config.get("OPENAI_API_KEY")
+        
+        if not api_key:
+            return jsonify({
+                'status': 'error',
+                'message': 'OpenAI API key is missing'
+            }), 500
+            
+        # Create a client
+        client = OpenAI(api_key=api_key)
+        
+        # Try a simple completion to test the API key
+        logger.info("Testing OpenAI API key with a simple API call")
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=10
+        )
+        
+        logger.info(f"OpenAI API test successful: {response.choices[0].message.content}")
+        
+        # If we got here, the API key is working
+        return jsonify({
+            'status': 'success',
+            'message': 'OpenAI API key is valid and working properly'
+        })
+    except Exception as e:
+        logger.error(f"Error testing OpenAI API: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error testing OpenAI API: {str(e)}'
+        }), 500
