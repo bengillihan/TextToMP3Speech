@@ -277,6 +277,61 @@ def internal_error(error):
     return render_template('500.html'), 500
 
 
+@app.route('/diagnostic/openai')
+def openai_diagnostic():
+    """Diagnostic endpoint for OpenAI API - does not require authentication"""
+    try:
+        from openai import OpenAI
+        api_key = app.config.get("OPENAI_API_KEY")
+        
+        if not api_key:
+            return jsonify({
+                'status': 'error',
+                'message': 'OpenAI API key is missing'
+            }), 500
+            
+        # Create a client
+        client = OpenAI(api_key=api_key)
+        
+        # Test TTS API specifically
+        logger.info("OpenAI diagnostic: Testing OpenAI TTS API")
+        tts_response = client.audio.speech.create(
+            model="tts-1",
+            voice="alloy",
+            input="This is a diagnostic test of the OpenAI TTS API."
+        )
+        
+        # Analyze TTS response
+        tts_type = type(tts_response).__name__
+        tts_attrs = dir(tts_response)
+        logger.info(f"OpenAI diagnostic: TTS response type: {tts_type}")
+        logger.info(f"OpenAI diagnostic: TTS response attributes: {tts_attrs}")
+        
+        # Try the write_to_file method
+        temp_path = "/tmp/test_tts.mp3"
+        if hasattr(tts_response, 'write_to_file'):
+            tts_response.write_to_file(temp_path)
+            file_size = os.path.getsize(temp_path) if os.path.exists(temp_path) else 0
+            logger.info(f"OpenAI diagnostic: Successfully wrote file with size: {file_size} bytes")
+        else:
+            logger.warning("OpenAI diagnostic: write_to_file method not available")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'OpenAI API diagnostic completed',
+            'tts_response_type': tts_type,
+            'tts_methods': [attr for attr in tts_attrs if not attr.startswith('_')],
+            'file_test': os.path.exists(temp_path)
+        })
+    except Exception as e:
+        logger.error(f"OpenAI diagnostic error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error in OpenAI diagnostic: {str(e)}'
+        }), 500
+
+
 @app.route('/api_health_check')
 @login_required
 def api_health_check():
@@ -304,10 +359,38 @@ def api_health_check():
         
         logger.info(f"OpenAI API test successful: {response.choices[0].message.content}")
         
+        # Test TTS API specifically
+        logger.info("Testing OpenAI TTS API")
+        tts_response = client.audio.speech.create(
+            model="tts-1",
+            voice="alloy",
+            input="This is a test of the OpenAI TTS API."
+        )
+        
+        # Analyze TTS response
+        tts_type = type(tts_response).__name__
+        tts_attrs = dir(tts_response)
+        logger.info(f"TTS response type: {tts_type}")
+        logger.info(f"TTS response attributes: {tts_attrs}")
+        
+        # Try to read the content
+        try:
+            if hasattr(tts_response, 'read'):
+                content = tts_response.read()
+                logger.info(f"TTS content size: {len(content)} bytes")
+            elif hasattr(tts_response, 'content'):
+                content = tts_response.content
+                logger.info(f"TTS content size: {len(content)} bytes")
+            else:
+                logger.warning("TTS response has no standard content attributes")
+        except Exception as read_error:
+            logger.error(f"Error reading TTS content: {str(read_error)}")
+        
         # If we got here, the API key is working
         return jsonify({
             'status': 'success',
-            'message': 'OpenAI API key is valid and working properly'
+            'message': 'OpenAI API key is valid and working properly',
+            'tts_response_type': tts_type
         })
     except Exception as e:
         logger.error(f"Error testing OpenAI API: {str(e)}")

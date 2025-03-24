@@ -5,6 +5,7 @@ import time
 import logging
 import uuid
 import traceback
+import sys
 from datetime import datetime
 from pydub import AudioSegment
 from threading import Thread
@@ -14,7 +15,19 @@ from openai import AsyncOpenAI, OpenAI
 from app import app, db
 from models import Conversion, ConversionMetrics, APILog
 
+# Set up detailed logging to both file and console
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Create console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+
+# Add the handlers to the logger
+if not logger.handlers:
+    logger.addHandler(console_handler)
 
 # Global dictionary to keep track of cancellation requests
 cancellation_requests = {}
@@ -382,10 +395,14 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                 raise ValueError(error_msg)
             logger.info("OpenAI API key is available")
             
+            # Create the temporary file path
+            temp_file_path = os.path.join(audio_dir, f"{chunk_index}_chunk.mp3")
+            
             logger.info(f"Calling OpenAI API for chunk {chunk_index}, conversion_id: {conversion_id}")
             # Call the OpenAI API to generate speech with retries and exponential backoff
             max_retries = 3
             retry_delay = 1.0  # initial delay in seconds
+            success = False
             
             for retry in range(max_retries + 1):  # +1 for the initial attempt
                 try:
@@ -396,19 +413,60 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                         # Double the delay for the next retry (exponential backoff)
                         retry_delay *= 2
                     
-                    # Make the API call
+                    # Method 1: Try direct file writing using write_to_file (recommended method)
+                    logger.info(f"Using write_to_file for chunk {chunk_index}")
+                    # Make the API call and write directly to a file
                     response = await client.audio.speech.create(
                         model="tts-1",
-                        voice="alloy",  # You can change this to other available voices
+                        voice="alloy",
                         input=text
                     )
-                    logger.info(f"OpenAI API call successful for chunk {chunk_index}, conversion_id: {conversion_id}")
                     
-                    # If we get here, the call was successful, so break out of the retry loop
-                    break
+                    # Most reliable method for AsyncOpenAI TTS
+                    if hasattr(response, 'write_to_file'):
+                        logger.info(f"Writing response directly to file using write_to_file")
+                        response.write_to_file(temp_file_path)
+                        logger.info(f"Successfully wrote to file using write_to_file")
+                        success = True
+                    # Alternative method using stream_to_file
+                    elif hasattr(response, 'stream_to_file'):
+                        logger.info(f"Writing response directly to file using stream_to_file")
+                        response.stream_to_file(temp_file_path)
+                        logger.info(f"Successfully wrote to file using stream_to_file")
+                        success = True
+                    # Fallback to read + write
+                    elif hasattr(response, 'read'):
+                        logger.info(f"Writing response using read() and manual write")
+                        content = response.read()
+                        with open(temp_file_path, 'wb') as f:
+                            f.write(content)
+                        logger.info(f"Successfully wrote {len(content)} bytes to file")
+                        success = True
+                    # Last resort for bytes response
+                    elif isinstance(response, bytes):
+                        logger.info(f"Response is bytes, writing directly")
+                        with open(temp_file_path, 'wb') as f:
+                            f.write(response)
+                        logger.info(f"Successfully wrote {len(response)} bytes to file")
+                        success = True
+                    else:
+                        # Try fallback approach with direct conversion to bytes
+                        logger.warning(f"Using fallback approach with direct response writing")
+                        with open(temp_file_path, 'wb') as f:
+                            f.write(response)
+                        logger.info(f"Successfully wrote file using direct bytes conversion")
+                        success = True
+                    
+                    # Verify the file was created successfully
+                    if os.path.exists(temp_file_path) and os.path.getsize(temp_file_path) > 0:
+                        logger.info(f"Verified file exists: {temp_file_path} ({os.path.getsize(temp_file_path)} bytes)")
+                        break  # Success! Break out of retry loop
+                    else:
+                        raise Exception(f"Failed to create file or file is empty: {temp_file_path}")
                     
                 except Exception as e:
-                    logger.error(f"OpenAI API call failed: {str(e)}")
+                    logger.error(f"OpenAI API call failed on attempt {retry+1}/{max_retries+1}: {str(e)}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
                     
                     # Log to the database
                     with app.app_context():
@@ -424,7 +482,6 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                     # If this was our last retry attempt, log and raise
                     if retry == max_retries:
                         logger.error(f"All retries failed for chunk {chunk_index}. Giving up.")
-                        logger.error(f"Traceback: {traceback.format_exc()}")
                         raise
             
             # Check if the conversion was cancelled during the API call
@@ -432,53 +489,9 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                 logger.info(f"Conversion cancelled during API call for chunk {chunk_index}")
                 return
             
-            # Save the audio data to a temporary file
-            temp_file_path = os.path.join(audio_dir, f"{chunk_index}_chunk.mp3")
-            try:
-                logger.info(f"Processing response for chunk {chunk_index}")
-                
-                # Identify the response type
-                response_type = type(response).__name__
-                logger.info(f"Response type: {response_type}")
-                
-                # Handle HttpxBinaryResponseContent from AsyncOpenAI
-                if response_type == 'HttpxBinaryResponseContent':
-                    logger.info("Handling HttpxBinaryResponseContent")
-                    # Use the read() method (not awaited) to get the bytes content
-                    audio_data = response.read()
-                    logger.info(f"Read {len(audio_data)} bytes from HttpxBinaryResponseContent")
-                    
-                    with open(temp_file_path, 'wb') as f:
-                        f.write(audio_data)
-                
-                # Handle bytes directly
-                elif isinstance(response, bytes):
-                    logger.info(f"Response is bytes, writing {len(response)} bytes to file")
-                    with open(temp_file_path, 'wb') as f:
-                        f.write(response)
-                
-                # Handle any other response type
-                else:
-                    logger.warning(f"Unknown response type: {response_type}, attempting multiple methods")
-                    # Try multiple methods to extract data
-                    if hasattr(response, 'read'):
-                        logger.info("Using read() method")
-                        with open(temp_file_path, 'wb') as f:
-                            f.write(response.read())
-                    elif hasattr(response, 'content'):
-                        logger.info("Using content attribute")
-                        with open(temp_file_path, 'wb') as f:
-                            f.write(response.content)
-                    else:
-                        logger.warning("No standard methods available, trying direct write")
-                        with open(temp_file_path, 'wb') as f:
-                            f.write(response)
-                
-                logger.info(f"Audio file saved successfully for chunk {chunk_index}")
-            except Exception as e:
-                logger.error(f"Error saving audio file: {str(e)}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                raise
+            # Check if we successfully created the file
+            if not success or not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+                raise Exception(f"Failed to create audio file for chunk {chunk_index}")
             
             # Add the file path to the list
             temp_audio_files.append(temp_file_path)
