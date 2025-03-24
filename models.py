@@ -33,6 +33,7 @@ class Conversion(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     title = db.Column(db.String(256), nullable=False)
     text = db.Column(db.Text, nullable=False)
+    voice = db.Column(db.String(20), default='onyx')  # Store the selected voice
     status = db.Column(db.String(20), default='pending')  # pending, processing, completed, failed, cancelled
     progress = db.Column(db.Float, default=0.0)  # 0-100%
     uuid = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)

@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, TextAreaField
+from wtforms import StringField, PasswordField, SubmitField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Email, EqualTo, ValidationError, Length
 from models import User
 
@@ -34,4 +34,13 @@ class ConversionForm(FlaskForm):
         DataRequired(), 
         Length(max=100000, message="Text must be no more than 100,000 characters.")
     ])
+    voice = SelectField('Voice', validators=[DataRequired()], 
+                       choices=[
+                           ('onyx', 'Onyx - Professional and versatile (Default)'),
+                           ('alloy', 'Alloy - Versatile, neutral gender voice'),
+                           ('echo', 'Echo - Deeper, announcer-like voice'),
+                           ('fable', 'Fable - Smooth narrative voice'),
+                           ('nova', 'Nova - Warm and pleasant'),
+                           ('shimmer', 'Shimmer - Clear, bright, and engaging')
+                       ], default='onyx')
     submit = SubmitField('Convert to Speech')

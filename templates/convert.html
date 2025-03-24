@@ -37,6 +37,17 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label for="voice" class="form-label">{{ form.voice.label }}</label>
+                        {{ form.voice(class="form-select", id="voice") }}
+                        {% for error in form.voice.errors %}
+                            <div class="text-danger">{{ error }}</div>
+                        {% endfor %}
+                        <div class="form-text">
+                            Select the voice that will be used to generate the speech.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
                         <h6>Guidelines:</h6>
                         <ul class="text-muted small">
                             <li>Maximum text length is 100,000 characters</li>
