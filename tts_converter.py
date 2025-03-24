@@ -109,39 +109,93 @@ async def _process_conversion(conversion_id):
         db.session.commit()
         
         # Split text into chunks of 4000 characters or less
-        text = conversion.text
+        text = conversion.text or ""  # Ensure text is not None
         logger.info(f"Starting text chunking for conversion {conversion_id}, text length: {len(text)} characters")
+        
+        # Validate that we have text to process
+        if not text.strip():
+            error_message = "No text content provided for conversion"
+            logger.error(error_message)
+            conversion.status = 'failed'
+            db.session.add(APILog(
+                conversion_id=conversion_id,
+                type='error',
+                message=error_message
+            ))
+            db.session.commit()
+            return
+            
         chunks = []
         max_chunk_size = 4000
         
-        # Try to split at sentence boundaries
+        # More robust chunking algorithm that handles various text formats
+        # First, normalize line endings and replace multiple spaces with single spaces
+        logger.info("Normalizing text format")
+        normalized_text = text.replace('\r\n', '\n').replace('\r', '\n')
+        
+        # Try to split at sentence boundaries (looking for various sentence-ending punctuation)
         logger.info("Splitting text at sentence boundaries")
-        sentences = text.replace('\n', ' ').split('. ')
-        logger.info(f"Split text into {len(sentences)} sentence fragments")
+        
+        # Use a regex to split on common sentence boundaries
+        import re
+        # Match periods, question marks, exclamation points followed by space or newline
+        sentence_pattern = r'(?<=[.!?])\s+'
+        sentences = re.split(sentence_pattern, normalized_text)
+        
+        # If we didn't get any meaningful split, just split by newlines
+        if len(sentences) <= 1:
+            logger.info("No sentence boundaries found, splitting by paragraphs")
+            sentences = normalized_text.split('\n')
+            
+            # If still no meaningful split, do a basic character split
+            if len(sentences) <= 1:
+                logger.info("No paragraph breaks found, doing basic character chunking")
+                # Just divide the text into chunks of 3500 characters to be safe
+                chunk_size = 3500
+                sentences = [normalized_text[i:i+chunk_size] for i in range(0, len(normalized_text), chunk_size)]
+        
+        logger.info(f"Split text into {len(sentences)} sentence/paragraph fragments")
         
         current_chunk = ""
         
         for i, sentence in enumerate(sentences):
-            # Add period back except for the last sentence if it doesn't end with period
-            if sentence != sentences[-1] or text.endswith('.'):
-                sentence += '.'
-            
+            # Ensure the sentence is not empty
+            if not sentence.strip():
+                continue
+                
             # Log every 50 sentences to avoid excessive logging
             if i % 50 == 0:
                 logger.debug(f"Processing sentence {i+1}/{len(sentences)}, length: {len(sentence)} characters")
             
-            # If adding this sentence would exceed chunk size, store current chunk and start a new one
-            if len(current_chunk) + len(sentence) > max_chunk_size:
-                chunks.append(current_chunk.strip())
-                logger.debug(f"Added chunk {len(chunks)} with length {len(current_chunk.strip())} characters")
-                current_chunk = sentence + " "
+            # Make sure we don't exceed the maximum chunk size
+            if len(sentence) > max_chunk_size:
+                logger.warning(f"Sentence {i+1} exceeds max chunk size ({len(sentence)} chars), splitting")
+                # Split the sentence into smaller parts
+                for j in range(0, len(sentence), max_chunk_size - 100):  # -100 for safety margin
+                    sub_sentence = sentence[j:j+max_chunk_size-100]
+                    if sub_sentence.strip():
+                        chunks.append(sub_sentence.strip())
+                        logger.debug(f"Added long sentence chunk with {len(sub_sentence.strip())} characters")
             else:
-                current_chunk += sentence + " "
+                # Normal case: add sentence to current chunk if it fits, otherwise start a new chunk
+                if len(current_chunk) + len(sentence) > max_chunk_size:
+                    if current_chunk.strip():
+                        chunks.append(current_chunk.strip())
+                        logger.debug(f"Added chunk {len(chunks)} with {len(current_chunk.strip())} characters")
+                    current_chunk = sentence + " "
+                else:
+                    current_chunk += sentence + " "
         
         # Add the last chunk if not empty
         if current_chunk.strip():
             chunks.append(current_chunk.strip())
-            logger.debug(f"Added final chunk {len(chunks)} with length {len(current_chunk.strip())} characters")
+            logger.debug(f"Added final chunk {len(chunks)} with {len(current_chunk.strip())} characters")
+        
+        # Last sanity check - if we still have no chunks but have text, create at least one chunk
+        if not chunks and text.strip():
+            logger.warning("Chunking algorithms produced no chunks, creating a single fallback chunk")
+            # Take the first 4000 chars at most to ensure we have something to process
+            chunks.append(text.strip()[:max_chunk_size])
         
         chunking_end = time.time()
         metrics.chunking_time = chunking_end - chunking_start
