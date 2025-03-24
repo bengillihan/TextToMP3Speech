@@ -52,9 +52,11 @@ def should_cancel(conversion_id):
 
 def process_conversion(conversion_id):
     """Start the conversion process in a background thread"""
+    logger.info(f"Creating background thread for conversion_id: {conversion_id}")
     thread = Thread(target=_process_conversion_thread, args=(conversion_id,))
     thread.daemon = True
     thread.start()
+    logger.info(f"Background thread started for conversion_id: {conversion_id}")
     return thread
 
 def _process_conversion_thread(conversion_id):
@@ -255,11 +257,38 @@ async def _process_conversion(conversion_id):
         os.makedirs(audio_dir, exist_ok=True)
         
         # Set up OpenAI client with timeout
-        client = AsyncOpenAI(
-            api_key=app.config["OPENAI_API_KEY"],
-            timeout=60.0  # 60 second timeout for API calls
-        )
-        logger.info("AsyncOpenAI client created with timeout settings")
+        try:
+            api_key = app.config.get("OPENAI_API_KEY")
+            if not api_key:
+                error_message = "OpenAI API key is missing"
+                logger.error(error_message)
+                conversion.status = 'failed'
+                db.session.add(APILog(
+                    conversion_id=conversion_id,
+                    type='error',
+                    message=error_message
+                ))
+                db.session.commit()
+                return
+                
+            logger.info(f"Initializing AsyncOpenAI client with API key: {'valid key (starts with ' + api_key[:4] + '...)' if api_key.startswith('sk-') else 'invalid key format!'}")
+            client = AsyncOpenAI(
+                api_key=api_key,
+                timeout=60.0  # 60 second timeout for API calls
+            )
+            logger.info("AsyncOpenAI client created with timeout settings")
+        except Exception as e:
+            error_message = f"Failed to initialize AsyncOpenAI client: {str(e)}"
+            logger.error(error_message)
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            conversion.status = 'failed'
+            db.session.add(APILog(
+                conversion_id=conversion_id,
+                type='error',
+                message=error_message
+            ))
+            db.session.commit()
+            return
         
         # Create a list to store the paths of the temporary audio files
         temp_audio_files = []
@@ -420,11 +449,21 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                     # Method 1: Try direct file writing using write_to_file (recommended method)
                     logger.info(f"Using write_to_file for chunk {chunk_index}")
                     # Make the API call and write directly to a file
-                    response = await client.audio.speech.create(
-                        model="tts-1",
-                        voice=voice,
-                        input=text
-                    )
+                    logger.info(f"Making OpenAI TTS API call for chunk {chunk_index} with voice: {voice}")
+                    logger.info(f"Text length for chunk {chunk_index}: {len(text)} characters")
+                    try:
+                        response = await client.audio.speech.create(
+                            model="tts-1",
+                            voice=voice,
+                            input=text
+                        )
+                        logger.info(f"OpenAI TTS API call successful for chunk {chunk_index}")
+                        logger.info(f"Response type: {type(response).__name__}")
+                        logger.info(f"Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+                    except Exception as api_error:
+                        logger.error(f"OpenAI TTS API call failed for chunk {chunk_index}: {str(api_error)}")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        raise
                     
                     # Most reliable method for AsyncOpenAI TTS
                     if hasattr(response, 'write_to_file'):

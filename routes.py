@@ -366,6 +366,36 @@ def openai_diagnostic():
         }), 500
 
 
+@app.route('/diagnostic/restart_conversion/<uuid>')
+def restart_conversion_diagnostic(uuid):
+    """Diagnostic endpoint to restart a conversion - does not require authentication"""
+    try:
+        conversion = Conversion.query.filter_by(uuid=uuid).first()
+        if not conversion:
+            return jsonify({'error': 'Conversion not found'}), 404
+        
+        logger.info(f"Diagnostic: Restarting conversion {uuid}")
+        conversion.status = 'pending'
+        conversion.progress = 0.0
+        conversion.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        # Start the conversion process
+        from tts_converter import process_conversion
+        process_conversion(conversion.id)
+        
+        return jsonify({
+            'status': 'restarted',
+            'message': f'Conversion {uuid} has been restarted',
+            'conversion_id': conversion.id
+        })
+    except Exception as e:
+        logger.error(f"Error restarting conversion {uuid}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error restarting conversion: {str(e)}'
+        }), 500
+
 @app.route('/api_health_check')
 @login_required
 def api_health_check():
