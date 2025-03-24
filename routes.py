@@ -530,9 +530,16 @@ def force_reset_conversion_diagnostic(uuid):
         
         logger.info(f"Diagnostic: Force resetting conversion {uuid}")
         
-        # Cancel any running conversion
-        from tts_converter import cancel_conversion
+        # Import needed functions
+        from tts_converter import cancel_conversion, cancellation_requests
+        
+        # First cancel any running conversion
         cancel_conversion(conversion.id)
+        
+        # Then ensure it's not in the cancellation list for the fresh start
+        if conversion.id in cancellation_requests:
+            logger.info(f"Removing conversion {uuid} from cancellation_requests dictionary")
+            del cancellation_requests[conversion.id]
         
         # Delete existing logs for this conversion
         APILog.query.filter_by(conversion_id=conversion.id).delete()

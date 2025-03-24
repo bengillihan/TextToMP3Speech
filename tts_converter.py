@@ -53,9 +53,17 @@ def should_cancel(conversion_id):
 def process_conversion(conversion_id):
     """Start the conversion process in a background thread"""
     logger.info(f"Creating background thread for conversion_id: {conversion_id}")
+    
+    # Make sure the conversion is not marked for cancellation
+    if conversion_id in cancellation_requests:
+        logger.info(f"Removing conversion {conversion_id} from cancellation_requests before starting")
+        del cancellation_requests[conversion_id]
+    
+    # Create and start the thread
     thread = Thread(target=_process_conversion_thread, args=(conversion_id,))
     thread.daemon = True
     thread.start()
+    
     logger.info(f"Background thread started for conversion_id: {conversion_id}")
     return thread
 

@@ -41,8 +41,16 @@ class Conversion(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    metrics = db.relationship('ConversionMetrics', backref='conversion', uselist=False, 
-                             cascade="all, delete-orphan")
+    # Define the relationship as uselist=False with a custom query to retrieve the latest metrics
+    metrics = db.relationship(
+        'ConversionMetrics', 
+        backref='conversion', 
+        uselist=False, 
+        cascade="all, delete-orphan",
+        primaryjoin="and_(Conversion.id==ConversionMetrics.conversion_id, "
+                    "ConversionMetrics.id==db.select([db.func.max(ConversionMetrics.id)])."
+                    "where(ConversionMetrics.conversion_id==Conversion.id).scalar_subquery())"
+    )
     logs = db.relationship('APILog', backref='conversion', lazy='dynamic', cascade="all, delete-orphan")
 
     def __repr__(self):
