@@ -138,34 +138,63 @@ def conversions():
 @app.route('/conversion/<uuid>/progress')
 @login_required
 def conversion_progress(uuid):
-    conversion = Conversion.query.filter_by(uuid=uuid).first_or_404()
-    
-    # Check if the user has access to this conversion
-    if conversion.user_id != current_user.id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    
-    # Check if the file exists if status is completed
-    if conversion.status == 'completed' and conversion.file_path:
-        if not os.path.exists(conversion.file_path):
-            # File is missing, mark for regeneration
-            conversion.status = 'pending'
-            conversion.progress = 0.0
-            db.session.commit()
-            
-            # Restart the conversion process
-            process_conversion(conversion.id)
-            
-            return jsonify({
-                'status': 'regenerating',
-                'progress': 0.0,
-                'message': 'File was missing and is being regenerated'
-            })
-    
-    return jsonify({
-        'status': conversion.status,
-        'progress': conversion.progress,
-        'updated_at': conversion.updated_at.strftime('%Y-%m-%d %H:%M:%S')
-    })
+    try:
+        logger.info(f"Fetching progress for conversion with UUID: {uuid}")
+        conversion = Conversion.query.filter_by(uuid=uuid).first_or_404()
+        
+        # Check if the user has access to this conversion
+        if conversion.user_id != current_user.id:
+            logger.warning(f"Unauthorized access attempt for conversion {uuid} by user {current_user.id}")
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        logger.info(f"Progress for conversion {uuid}: status={conversion.status}, progress={conversion.progress}")
+        
+        # Check if the file exists if status is completed
+        if conversion.status == 'completed' and conversion.file_path:
+            if not os.path.exists(conversion.file_path):
+                logger.warning(f"File missing for completed conversion {uuid}, regenerating")
+                # File is missing, mark for regeneration
+                conversion.status = 'pending'
+                conversion.progress = 0.0
+                db.session.commit()
+                
+                # Restart the conversion process
+                process_conversion(conversion.id)
+                
+                return jsonify({
+                    'status': 'regenerating',
+                    'progress': 0.0,
+                    'message': 'File was missing and is being regenerated'
+                })
+        
+        # Get recent logs for this conversion
+        recent_logs = APILog.query.filter_by(conversion_id=conversion.id)\
+            .order_by(APILog.timestamp.desc())\
+            .limit(5)\
+            .all()
+        
+        # Format logs for the response
+        logs = [{
+            'type': log.type,
+            'message': log.message,
+            'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        } for log in recent_logs]
+        
+        return jsonify({
+            'status': conversion.status,
+            'progress': conversion.progress,
+            'updated_at': conversion.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'logs': logs
+        })
+    except Exception as e:
+        logger.error(f"Error fetching progress for conversion {uuid}: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'error': 'Error fetching progress',
+            'message': str(e),
+            'status': 'error',
+            'progress': 0
+        }), 500
 
 
 @app.route('/conversion/<uuid>/download')

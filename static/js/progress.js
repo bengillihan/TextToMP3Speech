@@ -54,8 +54,17 @@ function pollProgress(uuid, progressBar, statusBadge, downloadButton, cancelButt
         // Function to update the progress
         const updateProgress = () => {
             fetch(`/conversion/${uuid}/progress`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    if (data.error) {
+                        throw new Error(data.message || data.error);
+                    }
+                    
                     // Update the progress bar
                     const progress = data.progress;
                     progressBar.style.width = `${progress}%`;
@@ -96,6 +105,37 @@ function pollProgress(uuid, progressBar, statusBadge, downloadButton, cancelButt
                         }
                     }
                     
+                    // Display most recent logs if available
+                    if (data.logs && data.logs.length > 0) {
+                        // Look for a log container or create one
+                        let logContainer = document.querySelector(`#logs-${uuid}`);
+                        if (!logContainer) {
+                            const containerDiv = document.createElement('div');
+                            containerDiv.className = 'mt-2 small';
+                            containerDiv.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <h6 class="mb-0">Processing Logs</h6>
+                                    <button class="btn btn-sm btn-link p-0" 
+                                            onclick="document.getElementById('logs-${uuid}').classList.toggle('d-none')">
+                                        Toggle
+                                    </button>
+                                </div>
+                                <div id="logs-${uuid}" class="logs-container bg-dark text-light p-2 rounded" style="max-height: 150px; overflow-y: auto;"></div>
+                            `;
+                            progressBar.closest('.progress').parentNode.appendChild(containerDiv);
+                            logContainer = document.querySelector(`#logs-${uuid}`);
+                        }
+                        
+                        // Add logs to the container
+                        logContainer.innerHTML = data.logs.map(log => {
+                            const logClass = log.type === 'error' ? 'text-danger' : 
+                                            log.type === 'warning' ? 'text-warning' : 'text-info';
+                            return `<div class="log-entry ${logClass}">
+                                <small>${log.timestamp}: ${log.message}</small>
+                            </div>`;
+                        }).join('');
+                    }
+                    
                     // Show or hide download button based on status
                     if (downloadButton) {
                         if (data.status === 'completed') {
@@ -121,14 +161,28 @@ function pollProgress(uuid, progressBar, statusBadge, downloadButton, cancelButt
                         // Show a success notification
                         showNotification('Conversion complete!', 'Your text has been successfully converted to speech.', 'success');
                     } else if (data.status === 'failed') {
-                        // Show an error notification
-                        showNotification('Conversion failed', 'There was an error processing your text. Please try again.', 'danger');
+                        // Show an error notification with log info if available
+                        let errorMessage = 'There was an error processing your text.';
+                        if (data.logs && data.logs.length > 0) {
+                            const errorLog = data.logs.find(log => log.type === 'error');
+                            if (errorLog) {
+                                errorMessage += ` Error: ${errorLog.message}`;
+                            }
+                        }
+                        showNotification('Conversion failed', errorMessage, 'danger');
                     }
                 })
                 .catch(error => {
                     console.error('Error fetching progress:', error);
-                    // Continue polling even if there was an error
-                    setTimeout(updateProgress, pollingInterval);
+                    
+                    // Show a warning notification for persistent errors
+                    if (error.message.includes('Server returned 500')) {
+                        progressBar.classList.add('bg-warning');
+                        showNotification('Connection issue', 'Having trouble connecting to the server. Will keep trying...', 'warning');
+                    }
+                    
+                    // Continue polling even if there was an error (with slightly longer interval)
+                    setTimeout(updateProgress, pollingInterval * 1.5);
                 });
         };
         
