@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 from datetime import datetime
 from flask import render_template, flash, redirect, url_for, request, jsonify, send_file
 from flask_login import login_user, logout_user, current_user, login_required
@@ -64,22 +65,47 @@ def convert():
             else:
                 title = "Untitled Conversion"
         
-        # Create new conversion record
-        conversion = Conversion(
-            user_id=current_user.id,
-            title=title,
-            text=form.text.data,
-            status='pending',
-            progress=0.0
-        )
-        db.session.add(conversion)
-        db.session.commit()
-        
-        # Start the conversion process
-        process_conversion(conversion.id)
-        
-        flash(f'Conversion "{form.title.data}" has been started!', 'success')
-        return redirect(url_for('conversions'))
+        try:
+            logger.info(f"Creating new conversion record for user: {current_user.id}, title: {title}")
+            # Create new conversion record
+            conversion = Conversion(
+                user_id=current_user.id,
+                title=title,
+                text=form.text.data,
+                status='pending',
+                progress=0.0
+            )
+            db.session.add(conversion)
+            db.session.commit()
+            logger.info(f"Conversion record created with ID: {conversion.id}")
+            
+            # Check if OpenAI API key is available
+            api_key = app.config.get("OPENAI_API_KEY")
+            if not api_key:
+                logger.error("OpenAI API key is missing")
+                flash('Conversion failed: OpenAI API key is missing. Please contact the administrator.', 'danger')
+                conversion.status = 'failed'
+                db.session.add(APILog(
+                    conversion_id=conversion.id,
+                    type='error',
+                    message="OpenAI API key is missing"
+                ))
+                db.session.commit()
+                return redirect(url_for('conversions'))
+                
+            # Start the conversion process
+            logger.info(f"Starting conversion process for ID: {conversion.id}")
+            process_conversion(conversion.id)
+            logger.info(f"Conversion process initiated for ID: {conversion.id}")
+            
+            flash(f'Conversion "{title}" has been started!', 'success')
+            return redirect(url_for('conversions'))
+        except Exception as e:
+            logger.error(f"Error starting conversion: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            flash(f'Error starting conversion: {str(e)}', 'danger')
+            return redirect(url_for('convert'))
     
     return render_template('convert.html', title='Convert Text to Speech', form=form)
 

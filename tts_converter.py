@@ -4,11 +4,13 @@ import aiohttp
 import time
 import logging
 import uuid
+import traceback
 from datetime import datetime
 from pydub import AudioSegment
 from threading import Thread
 
-from openai import AsyncOpenAI
+# Import the OpenAI client - using the latest SDK
+from openai import AsyncOpenAI, OpenAI
 from app import app, db
 from models import Conversion, ConversionMetrics, APILog
 
@@ -195,18 +197,31 @@ async def _process_conversion(conversion_id):
                 return
             
             # Combine audio files
+            logger.info(f"Starting to combine {len(temp_audio_files)} audio files")
             combined = AudioSegment.empty()
-            for file_path in temp_audio_files:
+            for i, file_path in enumerate(temp_audio_files):
                 if os.path.exists(file_path):
-                    audio_chunk = AudioSegment.from_file(file_path, format="mp3")
-                    combined += audio_chunk
+                    try:
+                        logger.info(f"Loading audio file {i+1}/{len(temp_audio_files)}: {file_path}")
+                        audio_chunk = AudioSegment.from_file(file_path, format="mp3")
+                        logger.info(f"Audio file {i+1} loaded, duration: {len(audio_chunk)/1000:.2f} seconds")
+                        combined += audio_chunk
+                    except Exception as e:
+                        logger.error(f"Error loading audio file {file_path}: {str(e)}")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        # Continue with other files
+                else:
+                    logger.warning(f"Audio file {file_path} does not exist")
             
             # Generate the output file path
             output_filename = f"{conversion.uuid}.mp3"
             output_path = os.path.join(app.config["AUDIO_STORAGE_PATH"], output_filename)
+            logger.info(f"Generated output path: {output_path}")
             
             # Export the combined audio file
+            logger.info(f"Exporting combined audio file, total duration: {len(combined)/1000:.2f} seconds")
             combined.export(output_path, format="mp3")
+            logger.info(f"Combined audio file exported successfully to {output_path}")
             
             # Clean up temporary files
             for file_path in temp_audio_files:
@@ -262,28 +277,52 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                 logger.info(f"Chunk {chunk_index} cancelled for conversion_id: {conversion_id}")
                 return
             
+            # Log OpenAI API key status (without revealing the key)
+            logger.info(f"Checking OpenAI API key for chunk {chunk_index}")
+            api_key = app.config.get("OPENAI_API_KEY")
+            if not api_key:
+                error_msg = "OpenAI API key is missing"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            logger.info("OpenAI API key is available")
+            
             logger.info(f"Calling OpenAI API for chunk {chunk_index}, conversion_id: {conversion_id}")
             # Call the OpenAI API to generate speech
-            response = await client.audio.speech.create(
-                model="tts-1",
-                voice="alloy",  # You can change this to other available voices
-                input=text
-            )
-            logger.info(f"OpenAI API call successful for chunk {chunk_index}, conversion_id: {conversion_id}")
+            try:
+                response = await client.audio.speech.create(
+                    model="tts-1",
+                    voice="alloy",  # You can change this to other available voices
+                    input=text
+                )
+                logger.info(f"OpenAI API call successful for chunk {chunk_index}, conversion_id: {conversion_id}")
+            except Exception as e:
+                logger.error(f"OpenAI API call failed: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise
             
             # Check if the conversion was cancelled during the API call
             if should_cancel(conversion_id):
+                logger.info(f"Conversion cancelled during API call for chunk {chunk_index}")
                 return
             
             # Save the audio data to a temporary file
             temp_file_path = os.path.join(audio_dir, f"{chunk_index}_chunk.mp3")
-            with open(temp_file_path, 'wb') as f:
-                # The response is a bytes object, so we can write it directly to a file
-                audio_data = await response.read()
-                f.write(audio_data)
+            try:
+                with open(temp_file_path, 'wb') as f:
+                    # The response is a bytes object, so we can write it directly to a file
+                    logger.info(f"Reading response data for chunk {chunk_index}")
+                    audio_data = await response.read()
+                    logger.info(f"Writing {len(audio_data)} bytes to file for chunk {chunk_index}")
+                    f.write(audio_data)
+                logger.info(f"Audio file saved successfully for chunk {chunk_index}")
+            except Exception as e:
+                logger.error(f"Error saving audio file: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                raise
             
             # Add the file path to the list
             temp_audio_files.append(temp_file_path)
+            logger.info(f"Added chunk {chunk_index} to temp_audio_files, current count: {len(temp_audio_files)}")
             
             # Update progress
             total_chunks = conversion.metrics.chunk_count
