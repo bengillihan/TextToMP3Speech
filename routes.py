@@ -10,7 +10,8 @@ from app import app, db
 from forms import LoginForm, RegistrationForm, ConversionForm
 from models import User, Conversion, ConversionMetrics, APILog
 from tts_converter import process_conversion, cancel_conversion
-from utils import cleanup_old_files, format_seattle_time
+from utils import cleanup_old_files
+from timezone_utils import format_seattle_time
 
 logger = logging.getLogger(__name__)
 
