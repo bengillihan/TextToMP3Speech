@@ -76,6 +76,7 @@ def convert():
                 user_id=current_user.id,
                 title=title,
                 text=form.text.data,
+                voice=form.voice.data,  # Add the selected voice
                 status='pending',
                 progress=0.0
             )
