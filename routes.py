@@ -150,6 +150,31 @@ def conversion_progress(uuid):
         
         logger.info(f"Progress for conversion {uuid}: status={conversion.status}, progress={conversion.progress}")
         
+        # Check if processing is stuck (no progress for 5 minutes)
+        if conversion.status == 'processing' and conversion.progress == 0.0:
+            # Calculate time since last update
+            time_since_update = datetime.utcnow() - conversion.updated_at
+            if time_since_update.total_seconds() > 300:  # 5 minutes
+                logger.warning(f"Conversion {uuid} appears stuck in processing state, restarting")
+                # Mark for restart
+                conversion.status = 'pending'
+                conversion.progress = 0.0
+                db.session.add(APILog(
+                    conversion_id=conversion.id,
+                    type='warning',
+                    message="Conversion appeared stuck and was restarted"
+                ))
+                db.session.commit()
+                
+                # Restart the conversion process
+                process_conversion(conversion.id)
+                
+                return jsonify({
+                    'status': 'restarting',
+                    'progress': 0.0,
+                    'message': 'Conversion appeared stuck and is being restarted'
+                })
+        
         # Check if the file exists if status is completed
         if conversion.status == 'completed' and conversion.file_path:
             if not os.path.exists(conversion.file_path):
