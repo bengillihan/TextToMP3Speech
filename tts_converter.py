@@ -44,16 +44,26 @@ def process_conversion(conversion_id):
 
 def _process_conversion_thread(conversion_id):
     """Thread function to process a conversion"""
+    logger.info(f"Starting conversion thread for conversion_id: {conversion_id}")
     try:
         # Create a new event loop for this thread
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
+        # Log that we're about to start the conversion process
+        logger.info(f"About to start conversion process for conversion_id: {conversion_id}")
+        
         # Run the conversion process
         loop.run_until_complete(_process_conversion(conversion_id))
+        
+        logger.info(f"Conversion process completed for conversion_id: {conversion_id}")
     except Exception as e:
+        import traceback
         logger.error(f"Error in conversion thread: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
         with app.app_context():
+            logger.info(f"Updating database with error for conversion_id: {conversion_id}")
             conversion = Conversion.query.get(conversion_id)
             if conversion:
                 conversion.status = 'failed'
@@ -63,22 +73,28 @@ def _process_conversion_thread(conversion_id):
                     message=f"Thread error: {str(e)}"
                 ))
                 db.session.commit()
+                logger.info(f"Database updated with error for conversion_id: {conversion_id}")
     finally:
         # Clean up
         if conversion_id in cancellation_requests:
             del cancellation_requests[conversion_id]
+        logger.info(f"Conversion thread for conversion_id: {conversion_id} completed")
 
 async def _process_conversion(conversion_id):
     """Process the text-to-speech conversion using OpenAI API"""
+    logger.info(f"Starting _process_conversion for conversion_id: {conversion_id}")
     start_time = time.time()
     chunking_start = time.time()
     
     with app.app_context():
+        logger.info(f"Entering app context for conversion_id: {conversion_id}")
         # Get the conversion from the database
         conversion = Conversion.query.get(conversion_id)
         if not conversion:
             logger.error(f"Conversion with ID {conversion_id} not found")
             return
+        
+        logger.info(f"Found conversion in database: {conversion.id}, title: {conversion.title}")
         
         # Initialize metrics
         metrics = ConversionMetrics(conversion_id=conversion_id)
@@ -237,18 +253,23 @@ async def _process_conversion(conversion_id):
 
 async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, temp_audio_files):
     """Process a single text chunk with the OpenAI TTS API"""
+    logger.info(f"Processing chunk {chunk_index} for conversion_id: {conversion_id}")
     try:
         with app.app_context():
+            logger.info(f"Entering app context for chunk {chunk_index}, conversion_id: {conversion_id}")
             conversion = Conversion.query.get(conversion_id)
             if should_cancel(conversion_id):
+                logger.info(f"Chunk {chunk_index} cancelled for conversion_id: {conversion_id}")
                 return
             
+            logger.info(f"Calling OpenAI API for chunk {chunk_index}, conversion_id: {conversion_id}")
             # Call the OpenAI API to generate speech
             response = await client.audio.speech.create(
                 model="tts-1",
                 voice="alloy",  # You can change this to other available voices
                 input=text
             )
+            logger.info(f"OpenAI API call successful for chunk {chunk_index}, conversion_id: {conversion_id}")
             
             # Check if the conversion was cancelled during the API call
             if should_cancel(conversion_id):
