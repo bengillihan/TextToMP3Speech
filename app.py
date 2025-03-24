@@ -39,13 +39,17 @@ app.config["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
 # Initialize the extensions with the app
 db.init_app(app)
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager.login_view = 'google_auth.login'
 
 # Import models (must be imported after db initialization)
 with app.app_context():
     # Import models and routes
     from models import User, Conversion, ConversionMetrics, APILog
     import routes
+    from google_auth import google_auth
+    
+    # Register blueprints
+    app.register_blueprint(google_auth, url_prefix='/google_login')
     
     # Create database tables
     db.create_all()
