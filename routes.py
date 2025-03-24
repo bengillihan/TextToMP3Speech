@@ -537,9 +537,15 @@ def force_reset_conversion_diagnostic(uuid):
         # Delete existing logs for this conversion
         APILog.query.filter_by(conversion_id=conversion.id).delete()
         
-        # Reset metrics
-        if conversion.metrics:
-            db.session.delete(conversion.metrics)
+        # Reset metrics - handle case of multiple metrics safely
+        try:
+            # Properly handle possible multiple metrics
+            metrics_records = ConversionMetrics.query.filter_by(conversion_id=conversion.id).all()
+            logger.info(f"Found {len(metrics_records)} metrics records for conversion {uuid}")
+            for metric in metrics_records:
+                db.session.delete(metric)
+        except Exception as e:
+            logger.error(f"Error deleting metrics: {str(e)}")
         
         # Reset conversion status
         conversion.status = 'pending'

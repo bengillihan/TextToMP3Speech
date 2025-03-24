@@ -463,12 +463,23 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                     
                     api_start_time = time.time()
                     try:
-                        # Make the API call
-                        response = await client.audio.speech.create(
-                            model="tts-1",
-                            voice=voice,
-                            input=text
-                        )
+                        # Make the API call with enhanced debugging
+                        logger.info(f"About to make API call with voice={voice}, text length={len(text)}")
+                        logger.info(f"Using API key: {api_key[:4]}... (key format validation: valid={api_key.startswith('sk-')})")
+                        
+                        # Make the actual API call with more debug info
+                        try:
+                            response = await client.audio.speech.create(
+                                model="tts-1",
+                                voice=voice,
+                                input=text
+                            )
+                            logger.info(f"API call succeeded with response type: {type(response).__name__}")
+                        except Exception as api_e:
+                            logger.error(f"API call failed with exception: {str(api_e)}")
+                            logger.error(f"Exception type: {type(api_e).__name__}")
+                            logger.error(f"Exception traceback: {traceback.format_exc()}")
+                            raise
                         api_time = time.time() - api_start_time
                         logger.info(f"OpenAI TTS API call successful for chunk {chunk_index} in {api_time:.2f} seconds")
                         
