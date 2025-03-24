@@ -1,4 +1,6 @@
 import os
+import re
+import time
 import logging
 import traceback
 from datetime import datetime
@@ -420,6 +422,67 @@ def conversion_diagnostic(uuid):
             'message': f'Error getting conversion diagnostic: {str(e)}'
         }), 500
 
+@app.route('/diagnostic/conversion_logs/<uuid>')
+def conversion_logs_diagnostic(uuid):
+    """Get detailed logs for a conversion"""
+    try:
+        conversion = Conversion.query.filter_by(uuid=uuid).first()
+        if not conversion:
+            return jsonify({'error': 'Conversion not found'}), 404
+        
+        # Get all logs for this conversion
+        logs = APILog.query.filter_by(conversion_id=conversion.id).order_by(APILog.timestamp.desc()).all()
+        log_data = [{
+            'id': log.id,
+            'type': log.type,
+            'message': log.message,
+            'chunk_index': log.chunk_index,
+            'status': log.status,
+            'timestamp': format_seattle_time(log.timestamp)
+        } for log in logs]
+        
+        return jsonify({
+            'uuid': uuid,
+            'conversion_id': conversion.id,
+            'status': conversion.status,
+            'progress': conversion.progress,
+            'logs_count': len(log_data),
+            'logs': log_data
+        })
+    except Exception as e:
+        logger.error(f"Error getting logs for conversion {uuid}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error getting logs: {str(e)}'
+        }), 500
+
+@app.route('/diagnostic/all_conversions')
+def all_conversions_diagnostic():
+    """Get status of all conversions"""
+    try:
+        conversions = Conversion.query.all()
+        conversion_data = [{
+            'id': conv.id,
+            'uuid': conv.uuid,
+            'title': conv.title,
+            'status': conv.status,
+            'progress': conv.progress,
+            'voice': conv.voice,
+            'created_at': format_seattle_time(conv.created_at),
+            'updated_at': format_seattle_time(conv.updated_at)
+        } for conv in conversions]
+        
+        return jsonify({
+            'count': len(conversion_data),
+            'conversions': conversion_data
+        })
+    except Exception as e:
+        logger.error(f"Error getting all conversions: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error getting all conversions: {str(e)}'
+        }), 500
+
 @app.route('/diagnostic/restart_conversion/<uuid>')
 def restart_conversion_diagnostic(uuid):
     """Diagnostic endpoint to restart a conversion - does not require authentication"""
@@ -435,7 +498,14 @@ def restart_conversion_diagnostic(uuid):
         db.session.commit()
         
         # Start the conversion process
-        from tts_converter import process_conversion
+        from tts_converter import process_conversion, cancel_conversion
+        
+        # First ensure any existing process is cancelled
+        if conversion.status in ['processing', 'pending']:
+            cancel_conversion(conversion.id)
+            time.sleep(1)  # Give a moment for cancellation to be recognized
+            
+        # Start a fresh conversion
         process_conversion(conversion.id)
         
         return jsonify({
@@ -448,6 +518,70 @@ def restart_conversion_diagnostic(uuid):
         return jsonify({
             'status': 'error',
             'message': f'Error restarting conversion: {str(e)}'
+        }), 500
+
+@app.route('/diagnostic/force_reset_conversion/<uuid>')
+def force_reset_conversion_diagnostic(uuid):
+    """Forcefully reset a conversion that appears to be stuck"""
+    try:
+        conversion = Conversion.query.filter_by(uuid=uuid).first()
+        if not conversion:
+            return jsonify({'error': 'Conversion not found'}), 404
+        
+        logger.info(f"Diagnostic: Force resetting conversion {uuid}")
+        
+        # Cancel any running conversion
+        from tts_converter import cancel_conversion
+        cancel_conversion(conversion.id)
+        
+        # Delete existing logs for this conversion
+        APILog.query.filter_by(conversion_id=conversion.id).delete()
+        
+        # Reset metrics
+        if conversion.metrics:
+            db.session.delete(conversion.metrics)
+        
+        # Reset conversion status
+        conversion.status = 'pending'
+        conversion.progress = 0.0
+        conversion.updated_at = datetime.utcnow()
+        conversion.file_path = None
+        
+        # Save changes
+        db.session.commit()
+        
+        # Add a fresh log entry
+        db.session.add(APILog(
+            conversion_id=conversion.id,
+            type='info',
+            message=f"Conversion was force reset at {datetime.utcnow()}",
+            status=200
+        ))
+        db.session.commit()
+        
+        # Create fresh metrics
+        metrics = ConversionMetrics(
+            conversion_id=conversion.id,
+            chunk_count=len(re.split(r'[.!?]', conversion.text.strip())) // 15 + 1,  # Rough estimate
+            total_tokens=len(conversion.text.split()) if conversion.text else 0
+        )
+        db.session.add(metrics)
+        db.session.commit()
+        
+        # Start a fresh conversion
+        from tts_converter import process_conversion
+        process_conversion(conversion.id)
+        
+        return jsonify({
+            'status': 'reset',
+            'message': f'Conversion {uuid} has been forcefully reset',
+            'conversion_id': conversion.id
+        })
+    except Exception as e:
+        logger.error(f"Error force resetting conversion {uuid}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Error force resetting conversion: {str(e)}'
         }), 500
 
 @app.route('/api_health_check')
