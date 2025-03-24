@@ -595,7 +595,9 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
             logger.info(f"Added chunk {chunk_index} to temp_audio_files, current count: {len(temp_audio_files)}")
             
             # Update progress
-            total_chunks = conversion.metrics.chunk_count
+            # Get metrics using the helper method to avoid issues with multiple metrics
+            metrics = conversion.get_latest_metrics()
+            total_chunks = metrics.chunk_count if metrics else 0
             conversion.progress = min(95.0, (chunk_index + 1) / total_chunks * 95.0)  # Keep some room for combining
             conversion.updated_at = datetime.utcnow()
             

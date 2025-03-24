@@ -386,16 +386,17 @@ def conversion_diagnostic(uuid):
             'timestamp': format_seattle_time(log.timestamp)
         } for log in logs]
         
-        # Get metrics if available
+        # Get metrics if available, using the helper method to avoid issues with multiple metrics
         metrics_data = None
-        if conversion.metrics:
+        metrics = conversion.get_latest_metrics()
+        if metrics:
             metrics_data = {
-                'chunking_time': conversion.metrics.chunking_time,
-                'api_time': conversion.metrics.api_time,
-                'combining_time': conversion.metrics.combining_time,
-                'total_time': conversion.metrics.total_time,
-                'chunk_count': conversion.metrics.chunk_count,
-                'total_tokens': conversion.metrics.total_tokens
+                'chunking_time': metrics.chunking_time,
+                'api_time': metrics.api_time,
+                'combining_time': metrics.combining_time,
+                'total_time': metrics.total_time,
+                'chunk_count': metrics.chunk_count,
+                'total_tokens': metrics.total_tokens
             }
         
         return jsonify({

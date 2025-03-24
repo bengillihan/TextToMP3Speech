@@ -41,16 +41,16 @@ class Conversion(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Define the relationship as uselist=False with a custom query to retrieve the latest metrics
-    metrics = db.relationship(
-        'ConversionMetrics', 
-        backref='conversion', 
-        uselist=False, 
-        cascade="all, delete-orphan",
-        primaryjoin="and_(Conversion.id==ConversionMetrics.conversion_id, "
-                    "ConversionMetrics.id==db.select([db.func.max(ConversionMetrics.id)])."
-                    "where(ConversionMetrics.conversion_id==Conversion.id).scalar_subquery())"
-    )
+    # Define metrics relationship with simple one-to-many
+    metrics = db.relationship('ConversionMetrics', backref='conversion', uselist=False,
+                             cascade="all, delete-orphan")
+                             
+    def get_latest_metrics(self):
+        """Helper to get the most recent metrics entry if multiple exist"""
+        from sqlalchemy import desc
+        # Query all metrics for this conversion and get the latest one
+        return ConversionMetrics.query.filter_by(conversion_id=self.id).order_by(
+            desc(ConversionMetrics.id)).first()
     logs = db.relationship('APILog', backref='conversion', lazy='dynamic', cascade="all, delete-orphan")
 
     def __repr__(self):
