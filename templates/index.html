@@ -9,8 +9,9 @@
         <p class="lead">Transform your text into natural-sounding speech with OpenAI's advanced TTS technology</p>
         {% if not current_user.is_authenticated %}
         <div class="mt-4">
-            <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg me-2">Get Started</a>
-            <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">Login</a>
+            <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg">
+                <i class="fab fa-google me-2"></i>Sign in with Google
+            </a>
         </div>
         {% else %}
         <div class="mt-4">
@@ -62,7 +63,7 @@
                 <div class="card">
                     <div class="card-body">
                         <ol class="list-group list-group-numbered mb-0">
-                            <li class="list-group-item border-0">Create an account or log in to your existing account</li>
+                            <li class="list-group-item border-0">Sign in with your Google account</li>
                             <li class="list-group-item border-0">Enter or paste your text (up to 100,000 characters)</li>
                             <li class="list-group-item border-0">Click "Convert to Speech" and wait for processing</li>
                             <li class="list-group-item border-0">Download your MP3 file when the conversion is complete</li>
