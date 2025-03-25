@@ -28,10 +28,19 @@ def login():
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
 
     # Use library to construct the request for Google login
-    # Get the domain from environment variables
-    domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
-    # Construct the redirect URI using the domain to avoid mismatches
-    redirect_uri = f"https://{domain}/google_login/callback" if domain else request.base_url.replace("http://", "https://") + "/callback"
+    # Check for production domain first
+    prod_domain = os.environ.get("REPLIT_DOMAIN", "")
+    # Get the development domain as a fallback
+    dev_domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
+    # Use production domain first, then development domain, fallback to request base URL
+    domain = prod_domain or dev_domain
+    # Add additional hardcoded production domain
+    if domain == "text-to-mp-3-speech-bdgillihan.replit.app":
+        redirect_uri = f"https://{domain}/google_login/callback"
+    elif domain:
+        redirect_uri = f"https://{domain}/google_login/callback"
+    else:
+        redirect_uri = request.base_url.replace("http://", "https://") + "/callback"
     
     print(f"Using redirect URI: {redirect_uri}")
     
@@ -53,10 +62,19 @@ def callback():
     google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
     token_endpoint = google_provider_cfg["token_endpoint"]
     
-    # Get the domain from environment variables
-    domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
-    # Construct the redirect URI using the domain to avoid mismatches
-    redirect_url = f"https://{domain}/google_login/callback" if domain else request.base_url.replace("http://", "https://")
+    # Check for production domain first
+    prod_domain = os.environ.get("REPLIT_DOMAIN", "")
+    # Get the development domain as a fallback
+    dev_domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
+    # Use production domain first, then development domain, fallback to request base URL
+    domain = prod_domain or dev_domain
+    # Add additional hardcoded production domain
+    if domain == "text-to-mp-3-speech-bdgillihan.replit.app":
+        redirect_url = f"https://{domain}/google_login/callback"
+    elif domain:
+        redirect_url = f"https://{domain}/google_login/callback"
+    else:
+        redirect_url = request.base_url.replace("http://", "https://")
     
     print(f"Using callback redirect URL: {redirect_url}")
     

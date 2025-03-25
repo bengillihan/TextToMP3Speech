@@ -41,14 +41,27 @@ db.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'google_auth.login'
 
-# Display the Google OAuth redirect URI that needs to be registered
-domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
-if domain:
-    redirect_uri = f"https://{domain}/google_login/callback"
-    logger.info("="*80)
-    logger.info(f"IMPORTANT: Register this OAuth redirect URI in Google Cloud Console:")
-    logger.info(f"{redirect_uri}")
-    logger.info("="*80)
+# Display the Google OAuth redirect URIs that need to be registered
+# Check for both production and development domains
+prod_domain = os.environ.get("REPLIT_DOMAIN", "")
+dev_domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
+hardcoded_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
+
+logger.info("="*80)
+logger.info(f"IMPORTANT: Register these OAuth redirect URIs in Google Cloud Console:")
+
+if prod_domain:
+    prod_redirect_uri = f"https://{prod_domain}/google_login/callback"
+    logger.info(f"Production URI: {prod_redirect_uri}")
+
+if dev_domain:
+    dev_redirect_uri = f"https://{dev_domain}/google_login/callback"
+    logger.info(f"Development URI: {dev_redirect_uri}")
+
+# Add the hardcoded production domain
+hardcoded_redirect_uri = f"https://{hardcoded_domain}/google_login/callback"
+logger.info(f"Hardcoded Production URI: {hardcoded_redirect_uri}")
+logger.info("="*80)
 
 # Import models (must be imported after db initialization)
 with app.app_context():
