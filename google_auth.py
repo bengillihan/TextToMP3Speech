@@ -49,19 +49,20 @@ def login():
     # Determine which domain to use for the callback
     production_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
     
-    # If we're coming from the production domain or the request is from production
-    is_production = (production_domain in referer or 
-                     production_domain in request_domain or
-                     production_domain in request_url or
-                     production_domain in origin)
-    
-    if is_production:
-        # Always use the production domain for redirect
+    # Check if this is the production domain
+    if production_domain in request_domain:
+        # CRITICAL: If we're on the production domain, always force the production redirect URI
+        is_production = True
         redirect_uri = f"https://{production_domain}/google_login/callback"
-        current_app.logger.info(f"OAuth Login - Using PRODUCTION redirect URI: {redirect_uri}")
+        current_app.logger.info(f"OAuth Login - FORCED PRODUCTION redirect URI (by host): {redirect_uri}")
+    elif production_domain in referer:
+        # If the referrer contains the production domain, use it
+        is_production = True
+        redirect_uri = f"https://{production_domain}/google_login/callback"
+        current_app.logger.info(f"OAuth Login - FORCED PRODUCTION redirect URI (by referer): {redirect_uri}")
     else:
         # For development environment, use the current domain
-        # This ensures we don't have a mismatch during development
+        is_production = False
         redirect_uri = f"https://{request_domain}/google_login/callback"
         current_app.logger.info(f"OAuth Login - Using DEVELOPMENT redirect URI: {redirect_uri}")
     
@@ -122,25 +123,27 @@ def callback():
         current_app.logger.info(f"OAuth Callback - Session domain: {session_domain}")
         current_app.logger.info(f"OAuth Callback - Session is_production: {session_is_production}")
         
-        # If we're coming from the production domain or the request is from production
-        # or the session indicates production
-        is_production = (
-            production_domain in referer or 
-            production_domain in request_domain or 
-            production_domain in request_url or
-            session_is_production
-        )
-        
-        # Use the session domain if available, otherwise determine from the current request
-        if session_domain:
+        # CRITICAL: If we're on the production domain or coming from it, ALWAYS use production domain
+        if production_domain in request_domain:
+            # If the request is directly on the production domain
+            domain_to_use = production_domain
+            current_app.logger.info(f"OAuth Callback - FORCED production domain (request on production): {domain_to_use}")
+        elif production_domain in referer:
+            # If the referrer contains the production domain
+            domain_to_use = production_domain
+            current_app.logger.info(f"OAuth Callback - FORCED production domain (referer): {domain_to_use}")
+        elif session_is_production:
+            # If the session indicates we started on production
+            domain_to_use = production_domain
+            current_app.logger.info(f"OAuth Callback - FORCED production domain (session): {domain_to_use}")
+        elif session_domain:
+            # Use the domain we stored in the session
             domain_to_use = session_domain
             current_app.logger.info(f"OAuth Callback - Using session domain: {domain_to_use}")
-        elif is_production:
-            domain_to_use = production_domain
-            current_app.logger.info(f"OAuth Callback - Using production domain (from detection): {domain_to_use}")
         else:
+            # Fallback to using the current domain (for development)
             domain_to_use = request_domain
-            current_app.logger.info(f"OAuth Callback - Using request domain: {domain_to_use}")
+            current_app.logger.info(f"OAuth Callback - Using current request domain: {domain_to_use}")
         
         # Always use the determined domain for redirect
         redirect_url = f"https://{domain_to_use}/google_login/callback"

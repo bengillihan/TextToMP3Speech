@@ -4,7 +4,7 @@ import time
 import logging
 import traceback
 from datetime import datetime
-from flask import render_template, flash, redirect, url_for, request, jsonify, send_file
+from flask import render_template, flash, redirect, url_for, request, jsonify, send_file, session
 from flask_login import login_user, logout_user, current_user, login_required
 from urllib.parse import urlparse
 
@@ -37,17 +37,28 @@ def login():
     # Check if this request is coming from the production domain
     referer = request.headers.get('Referer', '')
     request_domain = request.host
+    request_url = request.url
+    production_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
     
     # Log information for debugging
     logger.info(f"Login Referer: {referer}")
     logger.info(f"Login Request host domain: {request_domain}")
+    logger.info(f"Login Request URL: {request_url}")
     
-    # If we're coming from or on the production domain
-    if ("text-to-mp-3-speech-bdgillihan.replit.app" in referer or 
-        "text-to-mp-3-speech-bdgillihan.replit.app" in request_domain):
-        # This is a special case to handle the production environment correctly
-        logger.info("Production domain detected, using direct Google OAuth URL")
-        # Bypass the normal flow and use the production URL directly in Google OAuth
+    # CRITICAL: If we're on the production domain, special handling needed
+    if production_domain in request_domain:
+        # We are directly on the production domain
+        logger.info("PRODUCTION DOMAIN DETECTED: Direct access on production domain")
+        # Set a marker in the session that we're on production
+        session['is_production'] = True
+        session['oauth_domain'] = production_domain
+        return redirect(url_for('google_auth.login'))
+    elif production_domain in referer:
+        # We got here from the production domain
+        logger.info("PRODUCTION DOMAIN DETECTED: Referred from production domain")
+        # Set a marker in the session that we're on production
+        session['is_production'] = True
+        session['oauth_domain'] = production_domain
         return redirect(url_for('google_auth.login'))
     
     # For development environment, proceed normally
@@ -63,17 +74,28 @@ def register():
     # Check if this request is coming from the production domain
     referer = request.headers.get('Referer', '')
     request_domain = request.host
+    request_url = request.url
+    production_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
     
     # Log information for debugging
     logger.info(f"Register Referer: {referer}")
     logger.info(f"Register Request host domain: {request_domain}")
+    logger.info(f"Register Request URL: {request_url}")
     
-    # If we're coming from or on the production domain
-    if ("text-to-mp-3-speech-bdgillihan.replit.app" in referer or 
-        "text-to-mp-3-speech-bdgillihan.replit.app" in request_domain):
-        # This is a special case to handle the production environment correctly
-        logger.info("Production domain detected during registration, using direct Google OAuth URL")
-        # Bypass the normal flow and use the production URL directly in Google OAuth
+    # CRITICAL: If we're on the production domain, special handling needed
+    if production_domain in request_domain:
+        # We are directly on the production domain
+        logger.info("PRODUCTION DOMAIN DETECTED: Direct access on production domain for registration")
+        # Set a marker in the session that we're on production
+        session['is_production'] = True
+        session['oauth_domain'] = production_domain
+        return redirect(url_for('google_auth.login'))
+    elif production_domain in referer:
+        # We got here from the production domain
+        logger.info("PRODUCTION DOMAIN DETECTED: Referred from production domain for registration")
+        # Set a marker in the session that we're on production
+        session['is_production'] = True
+        session['oauth_domain'] = production_domain
         return redirect(url_for('google_auth.login'))
     
     # For development environment, proceed normally
