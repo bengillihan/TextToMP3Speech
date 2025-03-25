@@ -33,6 +33,24 @@ def login():
     """Redirect to Google login"""
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
+    
+    # Check if this request is coming from the production domain
+    referer = request.headers.get('Referer', '')
+    request_domain = request.host
+    
+    # Log information for debugging
+    logger.info(f"Login Referer: {referer}")
+    logger.info(f"Login Request host domain: {request_domain}")
+    
+    # If we're coming from or on the production domain
+    if ("text-to-mp-3-speech-bdgillihan.replit.app" in referer or 
+        "text-to-mp-3-speech-bdgillihan.replit.app" in request_domain):
+        # This is a special case to handle the production environment correctly
+        logger.info("Production domain detected, using direct Google OAuth URL")
+        # Bypass the normal flow and use the production URL directly in Google OAuth
+        return redirect(url_for('google_auth.login'))
+    
+    # For development environment, proceed normally
     return redirect(url_for('google_auth.login'))
 
 
@@ -41,6 +59,24 @@ def register():
     """Redirect to Google login for registration"""
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
+    
+    # Check if this request is coming from the production domain
+    referer = request.headers.get('Referer', '')
+    request_domain = request.host
+    
+    # Log information for debugging
+    logger.info(f"Register Referer: {referer}")
+    logger.info(f"Register Request host domain: {request_domain}")
+    
+    # If we're coming from or on the production domain
+    if ("text-to-mp-3-speech-bdgillihan.replit.app" in referer or 
+        "text-to-mp-3-speech-bdgillihan.replit.app" in request_domain):
+        # This is a special case to handle the production environment correctly
+        logger.info("Production domain detected during registration, using direct Google OAuth URL")
+        # Bypass the normal flow and use the production URL directly in Google OAuth
+        return redirect(url_for('google_auth.login'))
+    
+    # For development environment, proceed normally
     return redirect(url_for('google_auth.login'))
 
 

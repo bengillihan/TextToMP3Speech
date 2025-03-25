@@ -48,8 +48,11 @@ prod_domain = os.environ.get("REPLIT_DOMAIN", "")
 dev_domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
 hardcoded_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
 
-# For the current domain issue in the error
-error_domain = "284699a3-738e-48f9-8868-5f261bc94a86-00-uw70cafxtgnu.worf.replit.dev"
+# For the current domain issues in the error
+error_domains = [
+    "284699a3-738e-48f9-8868-5f261bc94a86-00-uw70cafxtgnu.worf.replit.dev",
+    "d392d3ac-1fa5-4659-b09e-923dcc8eee09-00-21tb74ah7mo9j.worf.replit.dev"  # New error domain
+]
 
 logger.info("="*80)
 logger.info(f"IMPORTANT: Register these OAuth redirect URIs in Google Cloud Console:")
@@ -70,9 +73,10 @@ if dev_domain:
 hardcoded_redirect_uri = f"https://{hardcoded_domain}/google_login/callback"
 logger.info(f"Hardcoded Production URI: {hardcoded_redirect_uri}")
 
-# Add the error domain from the error message
-error_redirect_uri = f"https://{error_domain}/google_login/callback"
-logger.info(f"Error Domain URI: {error_redirect_uri}")
+# Add the error domains from the error message
+for i, error_domain in enumerate(error_domains):
+    error_redirect_uri = f"https://{error_domain}/google_login/callback"
+    logger.info(f"Error Domain URI {i+1}: {error_redirect_uri}")
 
 logger.info("="*80)
 logger.info("IMPORTANT: Make sure to add ALL these URIs to your Google OAuth consent screen")

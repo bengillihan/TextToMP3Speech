@@ -28,35 +28,26 @@ def login():
     authorization_endpoint = google_provider_cfg["authorization_endpoint"]
 
     # Use library to construct the request for Google login
-    # First priority: use a specifically set OAUTH_REDIRECT_DOMAIN if available
-    oauth_domain = os.environ.get("OAUTH_REDIRECT_DOMAIN", "")
-    # Second priority: check for production domain
-    prod_domain = os.environ.get("REPLIT_DOMAIN", "")
-    # Third priority: get the development domain
-    dev_domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
-    
-    # Get the actual request URL as a fallback
+    # CRITICAL: When accessing from production, ALWAYS use the production domain
+    # Check if this is a request coming from the production domain
+    referer = request.headers.get('Referer', '')
     request_domain = request.host
     
-    # Log all domains for debugging
-    print(f"OAuth domain: {oauth_domain}")
-    print(f"Production domain: {prod_domain}")
-    print(f"Development domain: {dev_domain}")
+    # Log all domains and headers for debugging
+    print(f"Referer: {referer}")
     print(f"Request host domain: {request_domain}")
     
-    # Determine which domain to use, prioritizing the custom OAUTH domain
-    domain = oauth_domain or prod_domain or dev_domain or request_domain
-    
-    # Special case for the known production domain
-    if "text-to-mp-3-speech-bdgillihan.replit.app" in domain:
-        redirect_uri = f"https://text-to-mp-3-speech-bdgillihan.replit.app/google_login/callback"
+    # If we're coming from the production domain or the request is from production
+    if ("text-to-mp-3-speech-bdgillihan.replit.app" in referer or 
+        "text-to-mp-3-speech-bdgillihan.replit.app" in request_domain):
+        # Always use the production domain for redirect
+        redirect_uri = "https://text-to-mp-3-speech-bdgillihan.replit.app/google_login/callback"
+        print(f"Using PRODUCTION redirect URI: {redirect_uri}")
     else:
-        # Ensure domain has protocol
-        if domain and not domain.startswith(('http://', 'https://')):
-            redirect_uri = f"https://{domain}/google_login/callback"
-        else:
-            # Last resort fallback to the actual requested URL
-            redirect_uri = request.base_url.replace("http://", "https://") + "/callback"
+        # For development environment, use the current domain
+        # This ensures we don't have a mismatch during development
+        redirect_uri = f"https://{request_domain}/google_login/callback"
+        print(f"Using DEVELOPMENT redirect URI: {redirect_uri}")
     
     print(f"Using redirect URI: {redirect_uri}")
     
@@ -78,35 +69,26 @@ def callback():
     google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
     token_endpoint = google_provider_cfg["token_endpoint"]
     
-    # First priority: use a specifically set OAUTH_REDIRECT_DOMAIN if available
-    oauth_domain = os.environ.get("OAUTH_REDIRECT_DOMAIN", "")
-    # Second priority: check for production domain
-    prod_domain = os.environ.get("REPLIT_DOMAIN", "")
-    # Third priority: get the development domain
-    dev_domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
-    
-    # Get the actual request URL as a fallback
+    # CRITICAL: When accessing from production, ALWAYS use the production domain
+    # Check if this is a request coming from the production domain
+    referer = request.headers.get('Referer', '')
     request_domain = request.host
     
-    # Log all domains for debugging
-    print(f"OAuth domain: {oauth_domain}")
-    print(f"Production domain: {prod_domain}")
-    print(f"Development domain: {dev_domain}")
-    print(f"Request host domain: {request_domain}")
+    # Log all domains and headers for debugging
+    print(f"Callback Referer: {referer}")
+    print(f"Callback Request host domain: {request_domain}")
     
-    # Determine which domain to use, prioritizing the custom OAUTH domain
-    domain = oauth_domain or prod_domain or dev_domain or request_domain
-    
-    # Special case for the known production domain
-    if "text-to-mp-3-speech-bdgillihan.replit.app" in domain:
-        redirect_url = f"https://text-to-mp-3-speech-bdgillihan.replit.app/google_login/callback"
+    # If we're coming from the production domain or the request is from production
+    if ("text-to-mp-3-speech-bdgillihan.replit.app" in referer or 
+        "text-to-mp-3-speech-bdgillihan.replit.app" in request_domain):
+        # Always use the production domain for redirect
+        redirect_url = "https://text-to-mp-3-speech-bdgillihan.replit.app/google_login/callback"
+        print(f"Using PRODUCTION callback redirect URL: {redirect_url}")
     else:
-        # Ensure domain has protocol
-        if domain and not domain.startswith(('http://', 'https://')):
-            redirect_url = f"https://{domain}/google_login/callback"
-        else:
-            # Last resort fallback to the actual requested URL
-            redirect_url = request.base_url.replace("http://", "https://")
+        # For development environment, use the current domain
+        # This ensures we don't have a mismatch during development
+        redirect_url = f"https://{request_domain}/google_login/callback"
+        print(f"Using DEVELOPMENT callback redirect URL: {redirect_url}")
     
     print(f"Using callback redirect URL: {redirect_url}")
     
