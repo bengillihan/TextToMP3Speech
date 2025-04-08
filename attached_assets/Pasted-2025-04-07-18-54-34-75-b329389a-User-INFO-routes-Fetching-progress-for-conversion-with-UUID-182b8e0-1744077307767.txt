@@ -1,0 +1,72 @@
+2025-04-07 18:54:34.75
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:34.83
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667
+2025-04-07 18:54:37.74
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:37.82
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667
+2025-04-07 18:54:40.74
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:40.82
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667
+2025-04-07 18:54:43.73
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:43.85
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667
+2025-04-07 18:54:46.74
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:46.82
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667
+2025-04-07 18:54:49.75
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:49.83
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667
+2025-04-07 18:54:52.75
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:52.83
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667
+2025-04-07 18:54:55.02
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:55.10
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667
+2025-04-07 18:54:57.74
+b329389a
+User
+INFO:routes:Fetching progress for conversion with UUID: 182b8e0b-67d9-4799-89d8-258d0a50515f
+2025-04-07 18:54:57.82
+b329389a
+User
+INFO:routes:Progress for conversion 182b8e0b-67d9-4799-89d8-258d0a50515f: status=processing, progress=91.04166666666667

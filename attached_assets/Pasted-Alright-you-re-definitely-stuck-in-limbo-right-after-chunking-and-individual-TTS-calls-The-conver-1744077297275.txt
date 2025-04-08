@@ -1,0 +1,66 @@
+Alright — you're definitely stuck in limbo right after chunking and individual TTS calls. The conversion status is stuck at 91.04%, which means the system has successfully processed and saved all audio chunks — but it's not progressing into or out of the audio combining/export step.
+
+🔍 What This Confirms
+From your logs:
+
+Each chunk succeeds and is written to disk (Successfully wrote X bytes to file).
+
+Final progress update is always 91.04%, which aligns with your logic of reserving ~5% for combining:
+
+python
+Copy
+Edit
+conversion.progress = min(95.0, (chunk_index + 1) / total_chunks * 95.0)
+No logs appear after this for:
+
+python
+Copy
+Edit
+Exporting combined audio file, total duration...
+Combined audio file exported successfully to...
+🧠 Likely Culprit
+Your combining logic is either hanging or crashing silently during this block:
+
+python
+Copy
+Edit
+combined.export(output_path, format="mp3")
+If ffmpeg (used under the hood by Pydub) hangs or hits a memory/cpu bottleneck:
+
+No exception is raised unless stderr is captured.
+
+No error logs show up because it's stuck or terminated silently.
+
+✅ Immediate Fix to Try
+Add explicit timing and debug logging around the combine/export block to verify if it enters and exits correctly.
+
+Here’s what you should add:
+
+🔧 Replace this section:
+python
+Copy
+Edit
+logger.info(f"Exporting combined audio file, total duration: {len(combined)/1000:.2f} seconds")
+combined.export(output_path, format="mp3")
+logger.info(f"Combined audio file exported successfully to {output_path}")
+✅ With this updated version:
+python
+Copy
+Edit
+logger.info(f"Preparing to export combined audio file, duration: {len(combined)/1000:.2f} seconds")
+export_start = time.time()
+try:
+    combined.export(output_path, format="mp3")
+    export_time = time.time() - export_start
+    logger.info(f"Exported successfully to {output_path} in {export_time:.2f} seconds")
+except Exception as e:
+    logger.error(f"Export failed: {str(e)}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    raise
+This will give you precise diagnostics on:
+
+Whether export() is being entered
+
+Whether it hangs or throws
+
+How long the export takes (if it does succeed)

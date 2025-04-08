@@ -377,10 +377,26 @@ async def _process_conversion(conversion_id):
             output_path = os.path.join(app.config["AUDIO_STORAGE_PATH"], output_filename)
             logger.info(f"Generated output path: {output_path}")
             
-            # Export the combined audio file
-            logger.info(f"Exporting combined audio file, total duration: {len(combined)/1000:.2f} seconds")
-            combined.export(output_path, format="mp3")
-            logger.info(f"Combined audio file exported successfully to {output_path}")
+            # Export the combined audio file with enhanced error handling and timing
+            logger.info(f"Preparing to export combined audio file, duration: {len(combined)/1000:.2f} seconds")
+            export_start = time.time()
+            try:
+                combined.export(output_path, format="mp3")
+                export_time = time.time() - export_start
+                logger.info(f"Exported successfully to {output_path} in {export_time:.2f} seconds")
+            except Exception as e:
+                logger.error(f"Export failed: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                
+                # Update conversion status to failed
+                conversion.status = 'failed'
+                db.session.add(APILog(
+                    conversion_id=conversion_id,
+                    type='error',
+                    message=f"Failed to export combined audio: {str(e)}"
+                ))
+                db.session.commit()
+                raise
             
             # Clean up temporary files
             for file_path in temp_audio_files:
