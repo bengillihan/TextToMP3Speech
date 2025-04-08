@@ -532,40 +532,17 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                         # We're raising to trigger retry logic
                         raise
                     
-                    # Most reliable method for AsyncOpenAI TTS
-                    if hasattr(response, 'write_to_file'):
-                        logger.info(f"Writing response directly to file using write_to_file")
-                        response.write_to_file(temp_file_path)
-                        logger.info(f"Successfully wrote to file using write_to_file")
-                        success = True
-                    # Alternative method using stream_to_file
-                    elif hasattr(response, 'stream_to_file'):
-                        logger.info(f"Writing response directly to file using stream_to_file")
-                        response.stream_to_file(temp_file_path)
-                        logger.info(f"Successfully wrote to file using stream_to_file")
-                        success = True
-                    # Fallback to read + write
-                    elif hasattr(response, 'read'):
-                        logger.info(f"Writing response using read() and manual write")
-                        content = response.read()
-                        with open(temp_file_path, 'wb') as f:
-                            f.write(content)
-                        logger.info(f"Successfully wrote {len(content)} bytes to file")
-                        success = True
-                    # Last resort for bytes response
-                    elif isinstance(response, bytes):
-                        logger.info(f"Response is bytes, writing directly")
+                    # Always treat the response as bytes
+                    try:
+                        logger.info(f"Writing response as bytes to file: {temp_file_path}")
                         with open(temp_file_path, 'wb') as f:
                             f.write(response)
                         logger.info(f"Successfully wrote {len(response)} bytes to file")
                         success = True
-                    else:
-                        # Try fallback approach with direct conversion to bytes
-                        logger.warning(f"Using fallback approach with direct response writing")
-                        with open(temp_file_path, 'wb') as f:
-                            f.write(response)
-                        logger.info(f"Successfully wrote file using direct bytes conversion")
-                        success = True
+                    except Exception as e:
+                        logger.error(f"Failed to write response to file: {str(e)}")
+                        logger.error(f"Response type: {type(response).__name__}")
+                        raise
                     
                     # Verify the file was created successfully
                     if os.path.exists(temp_file_path) and os.path.getsize(temp_file_path) > 0:
