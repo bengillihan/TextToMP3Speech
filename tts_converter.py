@@ -532,16 +532,25 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                         # We're raising to trigger retry logic
                         raise
                     
-                    # Always treat the response as bytes
+                    # Handle HttpxBinaryResponseContent correctly
                     try:
-                        logger.info(f"Writing response as bytes to file: {temp_file_path}")
+                        logger.info(f"Response type: {type(response).__name__}")
+                        
+                        # Get the actual bytes content using aread()
+                        logger.info(f"Reading binary content from response")
+                        content = await response.aread()
+                        logger.info(f"Successfully read {len(content)} bytes from response")
+                        
+                        # Write the binary content to file
+                        logger.info(f"Writing binary content to file: {temp_file_path}")
                         with open(temp_file_path, 'wb') as f:
-                            f.write(response)
-                        logger.info(f"Successfully wrote {len(response)} bytes to file")
+                            f.write(content)
+                        logger.info(f"Successfully wrote {len(content)} bytes to file")
                         success = True
                     except Exception as e:
-                        logger.error(f"Failed to write response to file: {str(e)}")
+                        logger.error(f"Failed to process response: {str(e)}")
                         logger.error(f"Response type: {type(response).__name__}")
+                        logger.error(f"Available response methods: {[method for method in dir(response) if not method.startswith('_')]}")
                         raise
                     
                     # Verify the file was created successfully
