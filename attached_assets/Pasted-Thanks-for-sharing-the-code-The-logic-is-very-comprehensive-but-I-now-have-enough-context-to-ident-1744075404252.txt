@@ -1,0 +1,77 @@
+Thanks for sharing the code. The logic is very comprehensive, but I now have enough context to identify why your conversions for "Samuel: A Life Faithful to God in Faithless Times" failed.
+
+❌ Root Cause: write_to_file() or API Response Misuse
+In your process_chunk function, the OpenAI TTS API call block includes logic like:
+
+python
+Copy
+Edit
+response = await client.audio.speech.create(...)
+Then you check:
+
+python
+Copy
+Edit
+if hasattr(response, 'write_to_file'):
+    response.write_to_file(temp_file_path)
+However, based on [OpenAI's actual SDK behavior], await client.audio.speech.create() returns a binary stream, not an object with methods like write_to_file.
+
+💥 What This Means
+Your logic assumes response is a class-like object.
+
+If it's actually a binary stream (bytes), all hasattr(..., 'write_to_file') checks will fail.
+
+The fallback code only writes to file if isinstance(response, bytes), which may be skipped too early in your if-elif cascade.
+
+✅ Fix
+Update the file-saving logic like this:
+
+🔁 Replace This Block
+python
+Copy
+Edit
+if hasattr(response, 'write_to_file'):
+    ...
+elif hasattr(response, 'stream_to_file'):
+    ...
+elif hasattr(response, 'read'):
+    ...
+elif isinstance(response, bytes):
+    ...
+else:
+    ...
+✅ With This Simpler Version:
+python
+Copy
+Edit
+# Always treat the response as bytes
+with open(temp_file_path, 'wb') as f:
+    f.write(response)
+logger.info(f"Successfully wrote {len(response)} bytes to file")
+success = True
+This ensures the binary content is always saved correctly, regardless of the SDK version or response type.
+
+🟢 Updated Code Snippet
+Replace the file-saving part in process_chunk() with:
+
+python
+Copy
+Edit
+# Always treat the response as bytes
+try:
+    with open(temp_file_path, 'wb') as f:
+        f.write(response)
+    logger.info(f"Successfully wrote {len(response)} bytes to file")
+    success = True
+except Exception as e:
+    logger.error(f"Failed to write response to file: {str(e)}")
+    raise
+▶️ Next Step
+Try converting the same book again.
+If it fails again, check the logs for:
+
+Chunk indices that failed (look for retries or exceptions)
+
+Whether any MP3 files are being written at all
+
+Let me know if you'd like to log the actual response type with type(response) at runtime to confirm the response shape.
