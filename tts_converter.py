@@ -377,13 +377,146 @@ async def _process_conversion(conversion_id):
             output_path = os.path.join(app.config["AUDIO_STORAGE_PATH"], output_filename)
             logger.info(f"Generated output path: {output_path}")
             
-            # Export the combined audio file with enhanced error handling and timing
-            logger.info(f"Preparing to export combined audio file, duration: {len(combined)/1000:.2f} seconds")
+            # Export the combined audio file with enhanced error handling, timeouts, and chunking for large files
+            total_duration_seconds = len(combined)/1000
+            logger.info(f"Preparing to export combined audio file, duration: {total_duration_seconds:.2f} seconds")
             export_start = time.time()
+            
+            # Helper function for threading with timeout
+            def _export_mp3(audio_segment, path, params=None):
+                try:
+                    logger.info(f"Starting export with FFmpeg parameters: {params or []}")
+                    # Add parameters to get ffmpeg to log errors
+                    export_params = ["-loglevel", "error"]
+                    if params:
+                        export_params.extend(params)
+                    audio_segment.export(path, format="mp3", parameters=export_params)
+                    logger.info(f"Export completed successfully")
+                    return True
+                except Exception as e:
+                    logger.error(f"Export error in thread: {str(e)}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    return False
+            
+            # Strategy based on file size:
+            # For large files, split into smaller segments and export separately
+            LARGE_FILE_THRESHOLD = 30 * 60 * 1000  # 30 minutes in milliseconds
+            
             try:
-                combined.export(output_path, format="mp3")
+                import concurrent.futures
+                
+                if len(combined) > LARGE_FILE_THRESHOLD and len(combined) > 0:
+                    logger.info(f"Audio file is large ({total_duration_seconds:.2f} seconds), using segmented export strategy")
+                    
+                    # Split into manageable chunks (e.g., 10-minute segments)
+                    segment_size = 10 * 60 * 1000  # 10 minutes in milliseconds
+                    num_segments = (len(combined) + segment_size - 1) // segment_size
+                    
+                    logger.info(f"Splitting audio into {num_segments} segments of {segment_size/1000:.0f} seconds each")
+                    
+                    # Create temp directory for segments
+                    segments_dir = os.path.join(audio_dir, "segments")
+                    os.makedirs(segments_dir, exist_ok=True)
+                    
+                    # Export each segment
+                    segment_paths = []
+                    for i in range(num_segments):
+                        start_ms = i * segment_size
+                        end_ms = min((i + 1) * segment_size, len(combined))
+                        
+                        segment = combined[start_ms:end_ms]
+                        segment_path = os.path.join(segments_dir, f"segment_{i}.mp3")
+                        logger.info(f"Exporting segment {i+1}/{num_segments}, duration: {(end_ms-start_ms)/1000:.2f} seconds")
+                        
+                        # Use ThreadPoolExecutor with timeout
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(_export_mp3, segment, segment_path)
+                            try:
+                                # Add a timeout proportional to segment size (e.g., 1 second per 10 seconds of audio)
+                                timeout = max(60, (end_ms - start_ms) / 1000 / 10 * 60)
+                                logger.info(f"Using timeout of {timeout:.1f} seconds for segment {i+1}")
+                                success = future.result(timeout=timeout)
+                                if not success:
+                                    raise Exception(f"Failed to export segment {i+1}")
+                                segment_paths.append(segment_path)
+                            except concurrent.futures.TimeoutError:
+                                logger.error(f"Export timed out for segment {i+1}")
+                                # Update progress in the database
+                                conversion.status = 'failed'
+                                db.session.add(APILog(
+                                    conversion_id=conversion_id,
+                                    type='error',
+                                    message=f"Export timed out for segment {i+1} after {timeout:.1f} seconds"
+                                ))
+                                db.session.commit()
+                                raise Exception(f"Export timed out after {timeout:.1f} seconds")
+                    
+                    # Use FFmpeg directly to concatenate the segments
+                    import subprocess
+                    logger.info(f"Combining {len(segment_paths)} segments using FFmpeg")
+                    
+                    # Create a file list for FFmpeg
+                    concat_file = os.path.join(segments_dir, "files.txt")
+                    with open(concat_file, 'w') as f:
+                        for path in segment_paths:
+                            f.write(f"file '{os.path.abspath(path)}'\n")
+                    
+                    # Run FFmpeg to concatenate
+                    ffmpeg_cmd = [
+                        'ffmpeg', '-y', '-f', 'concat', '-safe', '0', 
+                        '-i', concat_file, '-c', 'copy', output_path
+                    ]
+                    logger.info(f"Running FFmpeg command: {' '.join(ffmpeg_cmd)}")
+                    
+                    # Capture stderr for logging
+                    result = subprocess.run(
+                        ffmpeg_cmd, 
+                        stderr=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        timeout=300  # 5-minute timeout for concatenation
+                    )
+                    
+                    if result.returncode != 0:
+                        error_output = result.stderr.decode('utf-8', errors='replace')
+                        logger.error(f"FFmpeg concatenation failed: {error_output}")
+                        raise Exception(f"FFmpeg concatenation failed with code {result.returncode}")
+                    
+                    logger.info(f"FFmpeg concatenation completed successfully")
+                    
+                    # Clean up segment files
+                    for path in segment_paths:
+                        os.remove(path)
+                    os.remove(concat_file)
+                    os.rmdir(segments_dir)
+                    
+                else:
+                    # For smaller files, use the original method with timeout
+                    logger.info(f"Using direct export with timeout for {total_duration_seconds:.2f} seconds audio")
+                    
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(_export_mp3, combined, output_path)
+                        try:
+                            # Use timeout proportional to file size, with a minimum of 2 minutes
+                            timeout = max(120, total_duration_seconds / 10 * 60)
+                            logger.info(f"Using timeout of {timeout:.1f} seconds for export")
+                            success = future.result(timeout=timeout)
+                            if not success:
+                                raise Exception("Export failed in thread")
+                        except concurrent.futures.TimeoutError:
+                            logger.error(f"Export timed out after {timeout:.1f} seconds")
+                            # Update progress in the database
+                            conversion.status = 'failed'
+                            db.session.add(APILog(
+                                conversion_id=conversion_id,
+                                type='error',
+                                message=f"Export timed out after {timeout:.1f} seconds"
+                            ))
+                            db.session.commit()
+                            raise Exception(f"Export timed out after {timeout:.1f} seconds")
+                
                 export_time = time.time() - export_start
                 logger.info(f"Exported successfully to {output_path} in {export_time:.2f} seconds")
+                
             except Exception as e:
                 logger.error(f"Export failed: {str(e)}")
                 logger.error(f"Traceback: {traceback.format_exc()}")

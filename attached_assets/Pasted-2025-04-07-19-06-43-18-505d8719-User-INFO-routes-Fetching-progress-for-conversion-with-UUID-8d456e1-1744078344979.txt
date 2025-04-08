@@ -1,0 +1,104 @@
+2025-04-07 19:06:43.18
+505d8719
+User
+INFO:routes:Fetching progress for conversion with UUID: 8d456e19-b8ab-484b-a37b-1377a00ba065
+2025-04-07 19:06:43.26
+505d8719
+User
+INFO:tts_converter:Audio file 12 loaded, duration: 250.99 seconds
+2025-04-07 19:06:43.26
+505d8719
+User
+2025-04-08 02:06:43,265 - tts_converter - INFO - Audio file 12 loaded, duration: 250.99 seconds
+2025-04-07 19:06:43.39
+505d8719
+User
+INFO:routes:Progress for conversion 8d456e19-b8ab-484b-a37b-1377a00ba065: status=processing, progress=79.16666666666667
+2025-04-07 19:06:43.40
+505d8719
+User
+2025-04-08 02:06:43,405 - tts_converter - INFO - Loading audio file 13/24: /home/runner/persistent_audio_files/e1a7539d-d355-4ab4-9e08-90d5d141d26b/12_chunk.mp3
+2025-04-07 19:06:43.40
+505d8719
+User
+INFO:tts_converter:Loading audio file 13/24: /home/runner/persistent_audio_files/e1a7539d-d355-4ab4-9e08-90d5d141d26b/12_chunk.mp3
+2025-04-07 19:06:45.57
+505d8719
+User
+DEBUG:pydub.converter:subprocess.call(['ffmpeg', '-y', '-f', 'mp3', '-i', '/home/runner/persistent_audio_files/e1a7539d-d355-4ab4-9e08-90d5d141d26b/12_chunk.mp3', '-acodec', 'pcm_s16le', '-vn', '-f', 'wav', '-'])
+2025-04-07 19:06:45.59
+505d8719
+User
+INFO:routes:Fetching progress for conversion with UUID: 8d456e19-b8ab-484b-a37b-1377a00ba065
+2025-04-07 19:06:45.67
+505d8719
+User
+INFO:routes:Progress for conversion 8d456e19-b8ab-484b-a37b-1377a00ba065: status=processing, progress=79.16666666666667
+2025-04-07 19:06:48.75
+505d8719
+User
+INFO:routes:Fetching progress for conversion with UUID: 8d456e19-b8ab-484b-a37b-1377a00ba065
+2025-04-07 19:06:48.83
+505d8719
+User
+INFO:routes:Progress for conversion 8d456e19-b8ab-484b-a37b-1377a00ba065: status=processing, progress=79.16666666666667
+2025-04-07 19:06:51.77
+505d8719
+User
+INFO:routes:Fetching progress for conversion with UUID: 8d456e19-b8ab-484b-a37b-1377a00ba065
+2025-04-07 19:06:51.85
+505d8719
+User
+INFO:routes:Progress for conversion 8d456e19-b8ab-484b-a37b-1377a00ba065: status=processing, progress=79.16666666666667
+2025-04-07 19:06:53.85
+505d8719
+User
+INFO:tts_converter:Audio file 13 loaded, duration: 247.44 seconds
+2025-04-07 19:06:53.85
+505d8719
+User
+2025-04-08 02:06:53,851 - tts_converter - INFO - Audio file 13 loaded, duration: 247.44 seconds
+2025-04-07 19:06:54.84
+505d8719
+User
+INFO:tts_converter:Loading audio file 14/24: /home/runner/persistent_audio_files/e1a7539d-d355-4ab4-9e08-90d5d141d26b/13_chunk.mp3
+2025-04-07 19:06:54.84
+505d8719
+User
+2025-04-08 02:06:54,847 - tts_converter - INFO - Loading audio file 14/24: /home/runner/persistent_audio_files/e1a7539d-d355-4ab4-9e08-90d5d141d26b/13_chunk.mp3
+2025-04-07 19:06:54.90
+505d8719
+User
+INFO:routes:Fetching progress for conversion with UUID: 8d456e19-b8ab-484b-a37b-1377a00ba065
+2025-04-07 19:06:54.98
+505d8719
+User
+INFO:routes:Progress for conversion 8d456e19-b8ab-484b-a37b-1377a00ba065: status=processing, progress=79.16666666666667
+2025-04-07 19:06:55.08
+505d8719
+User
+DEBUG:pydub.converter:subprocess.call(['ffmpeg', '-y', '-f', 'mp3', '-i', '/home/runner/persistent_audio_files/e1a7539d-d355-4ab4-9e08-90d5d141d26b/13_chunk.mp3', '-acodec', 'pcm_s16le', '-vn', '-f', 'wav', '-'])
+2025-04-07 19:06:51.77
+505d8719
+User
+INFO:routes:Fetching progress for conversion with UUID: 8d456e19-b8ab-484b-a37b-1377a00ba065
+2025-04-07 19:06:51.85
+505d8719
+User
+INFO:routes:Progress for conversion 8d456e19-b8ab-484b-a37b-1377a00ba065: status=processing, progress=79.16666666666667
+2025-04-07 19:06:53.85
+505d8719
+User
+INFO:tts_converter:Audio file 13 loaded, duration: 247.44 seconds
+2025-04-07 19:06:53.85
+505d8719
+User
+2025-04-08 02:06:53,851 - tts_converter - INFO - Audio file 13 loaded, duration: 247.44 seconds
+2025-04-07 19:06:54.84
+505d8719
+User
+INFO:tts_converter:Loading audio file 14/24: /home/runner/persistent_audio_files/e1a7539d-d355-4ab4-9e08-90d5d141d26b/13_chunk.mp3
+2025-04-07 19:06:54.84
+505d8719
+User
+2025-04-08 02:06:54,847 - tts_converter - INFO - Loading audio file 14/24: /home/runner/persistent_audio_files/e1a7539d-d355-4ab4-9e08-90d5d141d26b/13_chunk.mp3
