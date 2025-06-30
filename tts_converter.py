@@ -266,9 +266,10 @@ async def _process_conversion(conversion_id):
         
         # Set up OpenAI client with timeout
         try:
-            api_key = app.config.get("OPENAI_API_KEY")
+            # Try to get API key from Flask config first, then fall back to environment
+            api_key = app.config.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
             if not api_key:
-                error_message = "OpenAI API key is missing"
+                error_message = "OpenAI API key is missing from both Flask config and environment"
                 logger.error(error_message)
                 conversion.status = 'failed'
                 db.session.add(APILog(

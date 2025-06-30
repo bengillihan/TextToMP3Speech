@@ -376,12 +376,13 @@ def openai_diagnostic():
     """Diagnostic endpoint for OpenAI API - does not require authentication"""
     try:
         from openai import OpenAI
-        api_key = app.config.get("OPENAI_API_KEY")
+        # Try to get API key from Flask config first, then fall back to environment
+        api_key = app.config.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
         
         if not api_key:
             return jsonify({
                 'status': 'error',
-                'message': 'OpenAI API key is missing'
+                'message': 'OpenAI API key is missing from both Flask config and environment'
             }), 500
             
         # Create a client
@@ -662,12 +663,13 @@ def api_health_check():
     """Check if the OpenAI API is working properly (authenticated)"""
     try:
         from openai import OpenAI
-        api_key = app.config.get("OPENAI_API_KEY")
+        # Try to get API key from Flask config first, then fall back to environment
+        api_key = app.config.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
         
         if not api_key:
             return jsonify({
                 'status': 'error',
-                'message': 'OpenAI API key is missing'
+                'message': 'OpenAI API key is missing from both Flask config and environment'
             }), 500
             
         # Create a client

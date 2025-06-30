@@ -98,6 +98,7 @@ This is a Flask-based web application that converts text to speech using OpenAI'
 ## Changelog
 - June 27, 2025. Initial setup
 - June 27, 2025. Removed idle shutdown functionality from main.py (switching to serverless Railway configuration)
+- June 30, 2025. Fixed OpenAI API key access issues in background threads by adding environment variable fallback
 
 ## User Preferences
 
