@@ -1,3 +1,11 @@
+Yes, we can absolutely make the download start automatically when the conversion finishes.
+
+To do this, we only need to modify the JavaScript file (static/js/progress.js). The dashboard already intelligently monitors "pending" jobs. We just need to add a small trigger that fires the moment the status switches to "completed".
+
+Here is the updated code for static/js/progress.js:
+
+JavaScript
+
 /**
  * Handles polling for conversion progress updates
  */
@@ -161,14 +169,17 @@ function pollProgress(uuid, progressBar, statusBadge, downloadButton, cancelButt
                         // Show a success notification
                         showNotification('Conversion complete!', 'Your text has been successfully converted to speech.', 'success');
                         
-                        // Auto-download: Create a temporary link to trigger the download automatically
+                        // --- AUTO-DOWNLOAD START ---
+                        // Create a temporary link to trigger the download automatically
                         const downloadUrl = `/conversion/${uuid}/download`;
                         const link = document.createElement('a');
                         link.href = downloadUrl;
-                        link.style.display = 'none';
+                        link.style.display = 'none'; // Make it invisible
                         document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
+                        link.click(); // Trigger the click
+                        document.body.removeChild(link); // Clean up
+                        // --- AUTO-DOWNLOAD END ---
+                        
                     } else if (data.status === 'failed') {
                         // Show an error notification with log info if available
                         let errorMessage = 'There was an error processing your text.';
