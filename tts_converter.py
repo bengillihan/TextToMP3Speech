@@ -356,167 +356,66 @@ async def _process_conversion(conversion_id):
                 db.session.commit()
                 return
             
-            # Combine audio files
-            logger.info(f"Starting to combine {len(temp_audio_files)} audio files")
-            combined = AudioSegment.empty()
-            for i, file_path in enumerate(temp_audio_files):
-                if os.path.exists(file_path):
-                    try:
-                        logger.info(f"Loading audio file {i+1}/{len(temp_audio_files)}: {file_path}")
-                        audio_chunk = AudioSegment.from_file(file_path, format="mp3")
-                        logger.info(f"Audio file {i+1} loaded, duration: {len(audio_chunk)/1000:.2f} seconds")
-                        combined += audio_chunk
-                    except Exception as e:
-                        logger.error(f"Error loading audio file {file_path}: {str(e)}")
-                        logger.error(f"Traceback: {traceback.format_exc()}")
-                        # Continue with other files
-                else:
-                    logger.warning(f"Audio file {file_path} does not exist")
-            
-            # Generate the output file path
+            # Combine audio files using FFmpeg concat demuxer (fast, memory-efficient)
+            logger.info(f"Combining {len(temp_audio_files)} files using FFmpeg concat demuxer")
             output_filename = f"{conversion.uuid}.mp3"
             output_path = os.path.join(app.config["AUDIO_STORAGE_PATH"], output_filename)
-            logger.info(f"Generated output path: {output_path}")
             
-            # Export the combined audio file with enhanced error handling, timeouts, and chunking for large files
-            total_duration_seconds = len(combined)/1000
-            logger.info(f"Preparing to export combined audio file, duration: {total_duration_seconds:.2f} seconds")
+            # Create a text file listing all chunks for FFmpeg
+            list_file_path = os.path.join(audio_dir, "files.txt")
+            with open(list_file_path, 'w') as f:
+                for path in temp_audio_files:
+                    # Get absolute path and escape for FFmpeg concat demuxer
+                    safe_path = os.path.abspath(path)
+                    # Escape backslashes for Windows paths, then escape single quotes
+                    safe_path = safe_path.replace("\\", "/").replace("'", "'\\''")
+                    f.write(f"file '{safe_path}'\n")
+            
             export_start = time.time()
             
-            # Helper function for threading with timeout
-            def _export_mp3(audio_segment, path, params=None):
-                try:
-                    logger.info(f"Starting export with FFmpeg parameters: {params or []}")
-                    # Add parameters to get ffmpeg to log errors
-                    export_params = ["-loglevel", "error"]
-                    if params:
-                        export_params.extend(params)
-                    audio_segment.export(path, format="mp3", parameters=export_params)
-                    logger.info(f"Export completed successfully")
-                    return True
-                except Exception as e:
-                    logger.error(f"Export error in thread: {str(e)}")
-                    logger.error(f"Traceback: {traceback.format_exc()}")
-                    return False
-            
-            # Strategy based on file size:
-            # For large files, split into smaller segments and export separately
-            LARGE_FILE_THRESHOLD = 30 * 60 * 1000  # 30 minutes in milliseconds
-            
             try:
-                import concurrent.futures
+                import subprocess
                 
-                if len(combined) > LARGE_FILE_THRESHOLD and len(combined) > 0:
-                    logger.info(f"Audio file is large ({total_duration_seconds:.2f} seconds), using segmented export strategy")
-                    
-                    # Split into manageable chunks (e.g., 10-minute segments)
-                    segment_size = 10 * 60 * 1000  # 10 minutes in milliseconds
-                    num_segments = (len(combined) + segment_size - 1) // segment_size
-                    
-                    logger.info(f"Splitting audio into {num_segments} segments of {segment_size/1000:.0f} seconds each")
-                    
-                    # Create temp directory for segments
-                    segments_dir = os.path.join(audio_dir, "segments")
-                    os.makedirs(segments_dir, exist_ok=True)
-                    
-                    # Export each segment
-                    segment_paths = []
-                    for i in range(num_segments):
-                        start_ms = i * segment_size
-                        end_ms = min((i + 1) * segment_size, len(combined))
-                        
-                        segment = combined[start_ms:end_ms]
-                        segment_path = os.path.join(segments_dir, f"segment_{i}.mp3")
-                        logger.info(f"Exporting segment {i+1}/{num_segments}, duration: {(end_ms-start_ms)/1000:.2f} seconds")
-                        
-                        # Use ThreadPoolExecutor with timeout
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(_export_mp3, segment, segment_path)
-                            try:
-                                # Add a timeout proportional to segment size (e.g., 1 second per 10 seconds of audio)
-                                timeout = max(60, (end_ms - start_ms) / 1000 / 10 * 60)
-                                logger.info(f"Using timeout of {timeout:.1f} seconds for segment {i+1}")
-                                success = future.result(timeout=timeout)
-                                if not success:
-                                    raise Exception(f"Failed to export segment {i+1}")
-                                segment_paths.append(segment_path)
-                            except concurrent.futures.TimeoutError:
-                                logger.error(f"Export timed out for segment {i+1}")
-                                # Update progress in the database
-                                conversion.status = 'failed'
-                                db.session.add(APILog(
-                                    conversion_id=conversion_id,
-                                    type='error',
-                                    message=f"Export timed out for segment {i+1} after {timeout:.1f} seconds"
-                                ))
-                                db.session.commit()
-                                raise Exception(f"Export timed out after {timeout:.1f} seconds")
-                    
-                    # Use FFmpeg directly to concatenate the segments
-                    import subprocess
-                    logger.info(f"Combining {len(segment_paths)} segments using FFmpeg")
-                    
-                    # Create a file list for FFmpeg
-                    concat_file = os.path.join(segments_dir, "files.txt")
-                    with open(concat_file, 'w') as f:
-                        for path in segment_paths:
-                            f.write(f"file '{os.path.abspath(path)}'\n")
-                    
-                    # Run FFmpeg to concatenate
-                    ffmpeg_cmd = [
-                        'ffmpeg', '-y', '-f', 'concat', '-safe', '0', 
-                        '-i', concat_file, '-c', 'copy', output_path
-                    ]
-                    logger.info(f"Running FFmpeg command: {' '.join(ffmpeg_cmd)}")
-                    
-                    # Capture stderr for logging
-                    result = subprocess.run(
-                        ffmpeg_cmd, 
-                        stderr=subprocess.PIPE,
-                        stdout=subprocess.PIPE,
-                        timeout=300  # 5-minute timeout for concatenation
-                    )
-                    
-                    if result.returncode != 0:
-                        error_output = result.stderr.decode('utf-8', errors='replace')
-                        logger.error(f"FFmpeg concatenation failed: {error_output}")
-                        raise Exception(f"FFmpeg concatenation failed with code {result.returncode}")
-                    
-                    logger.info(f"FFmpeg concatenation completed successfully")
-                    
-                    # Clean up segment files
-                    for path in segment_paths:
-                        os.remove(path)
-                    os.remove(concat_file)
-                    os.rmdir(segments_dir)
-                    
-                else:
-                    # For smaller files, use the original method with timeout
-                    logger.info(f"Using direct export with timeout for {total_duration_seconds:.2f} seconds audio")
-                    
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(_export_mp3, combined, output_path)
-                        try:
-                            # Use timeout proportional to file size, with a minimum of 2 minutes
-                            timeout = max(120, total_duration_seconds / 10 * 60)
-                            logger.info(f"Using timeout of {timeout:.1f} seconds for export")
-                            success = future.result(timeout=timeout)
-                            if not success:
-                                raise Exception("Export failed in thread")
-                        except concurrent.futures.TimeoutError:
-                            logger.error(f"Export timed out after {timeout:.1f} seconds")
-                            # Update progress in the database
-                            conversion.status = 'failed'
-                            db.session.add(APILog(
-                                conversion_id=conversion_id,
-                                type='error',
-                                message=f"Export timed out after {timeout:.1f} seconds"
-                            ))
-                            db.session.commit()
-                            raise Exception(f"Export timed out after {timeout:.1f} seconds")
+                # Run FFmpeg to concatenate without re-encoding (-c copy)
+                # This is extremely fast and uses minimal memory
+                ffmpeg_cmd = [
+                    'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+                    '-i', list_file_path,
+                    '-c', 'copy',
+                    output_path
+                ]
+                
+                logger.info(f"Running FFmpeg: {' '.join(ffmpeg_cmd)}")
+                result = subprocess.run(
+                    ffmpeg_cmd, 
+                    check=True, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE,
+                    timeout=300  # 5-minute timeout for concatenation
+                )
                 
                 export_time = time.time() - export_start
-                logger.info(f"Exported successfully to {output_path} in {export_time:.2f} seconds")
+                
+                # Verify output
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    logger.info(f"Successfully created {output_path} in {export_time:.2f} seconds")
+                else:
+                    raise Exception("FFmpeg command finished but output file is missing or empty")
+                
+            except subprocess.CalledProcessError as e:
+                error_output = e.stderr.decode('utf-8', errors='replace') if e.stderr else str(e)
+                logger.error(f"FFmpeg concatenation failed: {error_output}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                
+                # Update conversion status to failed
+                conversion.status = 'failed'
+                db.session.add(APILog(
+                    conversion_id=conversion_id,
+                    type='error',
+                    message=f"FFmpeg concatenation failed: {error_output[:500]}"
+                ))
+                db.session.commit()
+                raise Exception(f"FFmpeg concatenation failed with code {e.returncode}")
                 
             except Exception as e:
                 logger.error(f"Export failed: {str(e)}")
@@ -527,10 +426,14 @@ async def _process_conversion(conversion_id):
                 db.session.add(APILog(
                     conversion_id=conversion_id,
                     type='error',
-                    message=f"Failed to export combined audio: {str(e)}"
+                    message=f"Failed to combine audio: {str(e)}"
                 ))
                 db.session.commit()
                 raise
+            
+            # Clean up the list file
+            if os.path.exists(list_file_path):
+                os.remove(list_file_path)
             
             # Clean up temporary files
             for file_path in temp_audio_files:
@@ -623,15 +526,6 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                     logger.info(f"Making OpenAI TTS API call for chunk {chunk_index} with voice: {voice}")
                     logger.info(f"Text length for chunk {chunk_index}: {len(text)} characters")
                     
-                    # Log in database that we're starting the API call
-                    db.session.add(APILog(
-                        conversion_id=conversion_id,
-                        type='info',
-                        message=f"Starting API call for chunk {chunk_index}",
-                        chunk_index=chunk_index
-                    ))
-                    db.session.commit()
-                    
                     api_start_time = time.time()
                     try:
                         # Make the API call with enhanced debugging
@@ -653,17 +547,6 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                             raise
                         api_time = time.time() - api_start_time
                         logger.info(f"OpenAI TTS API call successful for chunk {chunk_index} in {api_time:.2f} seconds")
-                        
-                        # Log API call success in database
-                        db.session.add(APILog(
-                            conversion_id=conversion_id,
-                            type='info',
-                            message=f"API call completed in {api_time:.2f} seconds for chunk {chunk_index}",
-                            chunk_index=chunk_index,
-                            status=200
-                        ))
-                        db.session.commit()
-                        logger.info(f"Response type: {type(response).__name__}")
                         logger.info(f"Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
                     except Exception as api_error:
                         error_msg = str(api_error)
@@ -762,23 +645,25 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
             temp_audio_files.append(temp_file_path)
             logger.info(f"Added chunk {chunk_index} to temp_audio_files, current count: {len(temp_audio_files)}")
             
-            # Update progress
-            # Get metrics using the helper method to avoid issues with multiple metrics
+            # Update progress - only commit to DB every 5 chunks or on last chunk to reduce locking
             metrics = conversion.get_latest_metrics()
             total_chunks = metrics.chunk_count if metrics else 0
-            conversion.progress = min(95.0, (chunk_index + 1) / total_chunks * 95.0)  # Keep some room for combining
-            conversion.updated_at = datetime.utcnow()
             
-            # Log success
-            db.session.add(APILog(
-                conversion_id=conversion_id,
-                type='info',
-                message=f"Successfully processed chunk {chunk_index + 1}/{total_chunks}",
-                chunk_index=chunk_index,
-                status=200
-            ))
+            # Only update DB on milestone chunks to prevent database locking
+            is_milestone = (chunk_index % 5 == 0) or (chunk_index == total_chunks - 1)
             
-            db.session.commit()
+            if is_milestone:
+                conversion.progress = min(95.0, (chunk_index + 1) / total_chunks * 95.0)
+                conversion.updated_at = datetime.utcnow()
+                
+                db.session.add(APILog(
+                    conversion_id=conversion_id,
+                    type='info',
+                    message=f"Processed chunk {chunk_index + 1}/{total_chunks}",
+                    chunk_index=chunk_index,
+                    status=200
+                ))
+                db.session.commit()
             
     except Exception as e:
         with app.app_context():
