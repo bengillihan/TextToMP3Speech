@@ -666,14 +666,33 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                         logger.info(f"Response type: {type(response).__name__}")
                         logger.info(f"Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
                     except Exception as api_error:
-                        logger.error(f"OpenAI TTS API call failed for chunk {chunk_index}: {str(api_error)}")
+                        error_msg = str(api_error)
+                        logger.error(f"OpenAI TTS API call failed for chunk {chunk_index}: {error_msg}")
+                        
+                        # Check if the error is a quota issue. If so, do NOT retry.
+                        if "insufficient_quota" in error_msg or (hasattr(api_error, 'code') and api_error.code == 'insufficient_quota'):
+                            logger.critical("OpenAI Quota Exceeded. Stopping retries immediately.")
+                            
+                            # Log critical error to database
+                            db.session.add(APILog(
+                                conversion_id=conversion_id,
+                                type='error',
+                                message="CRITICAL: OpenAI API Quota Exceeded. Please check billing.",
+                                chunk_index=chunk_index,
+                                status=429
+                            ))
+                            db.session.commit()
+                            
+                            # Raise immediately without retrying
+                            raise ValueError("OpenAI Quota Exceeded - Check Billing")
+                        
                         logger.error(f"Traceback: {traceback.format_exc()}")
                         
                         # Log API error to database
                         db.session.add(APILog(
                             conversion_id=conversion_id,
                             type='error',
-                            message=f"API call failed: {str(api_error)}",
+                            message=f"API call failed: {error_msg}",
                             chunk_index=chunk_index,
                             status=500
                         ))
