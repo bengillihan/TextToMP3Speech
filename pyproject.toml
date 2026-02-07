@@ -20,4 +20,5 @@ dependencies = [
     "oauthlib>=3.2.2",
     "requests>=2.32.3",
     "pytz>=2025.1",
+    "h11>=0.16.0",
 ]
