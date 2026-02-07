@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from urllib.parse import urlparse
 
 import requests
 from flask import Blueprint, redirect, request, url_for, current_app, session
@@ -9,6 +10,17 @@ from oauthlib.oauth2 import WebApplicationClient
 
 from models import User
 from app import db
+
+ALLOWED_GOOGLE_DOMAINS = {"accounts.google.com", "oauth2.googleapis.com", "www.googleapis.com", "openidconnect.googleapis.com"}
+
+
+def validate_google_url(url):
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ValueError(f"URL must use HTTPS: {url}")
+    if parsed.hostname not in ALLOWED_GOOGLE_DOMAINS:
+        raise ValueError(f"URL domain not allowed: {parsed.hostname}")
+    return url
 
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
@@ -27,7 +39,7 @@ def login():
     # Find out what URL to hit for Google login
     try:
         google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
-        authorization_endpoint = google_provider_cfg["authorization_endpoint"]
+        authorization_endpoint = validate_google_url(google_provider_cfg["authorization_endpoint"])
     except Exception as e:
         current_app.logger.error(f"Error fetching Google auth endpoint: {str(e)}")
         return "Error contacting Google authentication service. Please try again later.", 500
@@ -97,7 +109,7 @@ def callback():
         # Find out what URL to hit to get tokens
         try:
             google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
-            token_endpoint = google_provider_cfg["token_endpoint"]
+            token_endpoint = validate_google_url(google_provider_cfg["token_endpoint"])
         except Exception as e:
             current_app.logger.error(f"OAuth Callback - Error fetching Google token endpoint: {str(e)}")
             return "Error contacting Google authentication service. Please try again later.", 500
@@ -166,7 +178,8 @@ def callback():
                 code=code
             )
             
-            # Ensure client ID and secret are not None
+            validate_google_url(token_url)
+            
             google_client_id = GOOGLE_CLIENT_ID or ""
             google_client_secret = GOOGLE_CLIENT_SECRET or ""
             
@@ -194,7 +207,7 @@ def callback():
         
         # Get user info from Google
         try:
-            userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
+            userinfo_endpoint = validate_google_url(google_provider_cfg["userinfo_endpoint"])
             uri, headers, body = client.add_token(userinfo_endpoint)
             userinfo_response = requests.get(uri, headers=headers, data=body)
             
