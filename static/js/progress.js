@@ -1,4 +1,13 @@
 /**
+ * Escapes HTML special characters to prevent XSS
+ */
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
+
+/**
  * Handles polling for conversion progress updates
  */
 document.addEventListener('DOMContentLoaded', function() {
@@ -112,28 +121,48 @@ function pollProgress(uuid, progressBar, statusBadge, downloadButton, cancelButt
                         if (!logContainer) {
                             const containerDiv = document.createElement('div');
                             containerDiv.className = 'mt-2 small';
-                            containerDiv.innerHTML = `
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <h6 class="mb-0">Processing Logs</h6>
-                                    <button class="btn btn-sm btn-link p-0" 
-                                            onclick="document.getElementById('logs-${uuid}').classList.toggle('d-none')">
-                                        Toggle
-                                    </button>
-                                </div>
-                                <div id="logs-${uuid}" class="logs-container bg-dark text-light p-2 rounded" style="max-height: 150px; overflow-y: auto;"></div>
-                            `;
+
+                            const headerDiv = document.createElement('div');
+                            headerDiv.className = 'd-flex justify-content-between align-items-center mb-1';
+
+                            const heading = document.createElement('h6');
+                            heading.className = 'mb-0';
+                            heading.textContent = 'Processing Logs';
+
+                            const toggleBtn = document.createElement('button');
+                            toggleBtn.className = 'btn btn-sm btn-link p-0';
+                            toggleBtn.textContent = 'Toggle';
+                            toggleBtn.addEventListener('click', function() {
+                                const logsEl = document.getElementById('logs-' + uuid);
+                                if (logsEl) logsEl.classList.toggle('d-none');
+                            });
+
+                            headerDiv.appendChild(heading);
+                            headerDiv.appendChild(toggleBtn);
+
+                            const logsDiv = document.createElement('div');
+                            logsDiv.id = 'logs-' + uuid;
+                            logsDiv.className = 'logs-container bg-dark text-light p-2 rounded';
+                            logsDiv.style.maxHeight = '150px';
+                            logsDiv.style.overflowY = 'auto';
+
+                            containerDiv.appendChild(headerDiv);
+                            containerDiv.appendChild(logsDiv);
                             progressBar.closest('.progress').parentNode.appendChild(containerDiv);
-                            logContainer = document.querySelector(`#logs-${uuid}`);
+                            logContainer = logsDiv;
                         }
                         
-                        // Add logs to the container
-                        logContainer.innerHTML = data.logs.map(log => {
+                        logContainer.textContent = '';
+                        data.logs.forEach(log => {
                             const logClass = log.type === 'error' ? 'text-danger' : 
                                             log.type === 'warning' ? 'text-warning' : 'text-info';
-                            return `<div class="log-entry ${logClass}">
-                                <small>${log.timestamp}: ${log.message}</small>
-                            </div>`;
-                        }).join('');
+                            const entry = document.createElement('div');
+                            entry.className = 'log-entry ' + logClass;
+                            const small = document.createElement('small');
+                            small.textContent = (log.timestamp || '') + ': ' + (log.message || '');
+                            entry.appendChild(small);
+                            logContainer.appendChild(entry);
+                        });
                     }
                     
                     // Show or hide download button based on status
@@ -301,15 +330,25 @@ function showNotification(title, message, type = 'info') {
     toast.setAttribute('aria-live', 'assertive');
     toast.setAttribute('aria-atomic', 'true');
     
-    // Create the toast content
-    toast.innerHTML = `
-        <div class="d-flex">
-            <div class="toast-body">
-                <strong>${title}</strong> ${message}
-            </div>
-            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-    `;
+    const flexDiv = document.createElement('div');
+    flexDiv.className = 'd-flex';
+
+    const bodyDiv = document.createElement('div');
+    bodyDiv.className = 'toast-body';
+    const strong = document.createElement('strong');
+    strong.textContent = title;
+    bodyDiv.appendChild(strong);
+    bodyDiv.appendChild(document.createTextNode(' ' + message));
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn-close btn-close-white me-2 m-auto';
+    closeBtn.setAttribute('data-bs-dismiss', 'toast');
+    closeBtn.setAttribute('aria-label', 'Close');
+
+    flexDiv.appendChild(bodyDiv);
+    flexDiv.appendChild(closeBtn);
+    toast.appendChild(flexDiv);
     
     // Add the toast to the container
     toastContainer.appendChild(toast);
