@@ -57,6 +57,34 @@
 
 <section class="mt-5">
     <div class="container">
+        <h2 class="text-center mb-4">Hear an Example</h2>
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <blockquote class="blockquote border-start border-primary border-4 ps-3 mb-4">
+                            <p class="mb-2">"Four score and seven years ago our fathers brought forth on this continent, a new nation, conceived in Liberty, and dedicated to the proposition that all men are created equal."</p>
+                            <footer class="blockquote-footer mt-1">Abraham Lincoln, <cite title="Source Title">The Gettysburg Address</cite></footer>
+                        </blockquote>
+                        
+                        <div class="text-center mt-4 pt-2">
+                            <h5 class="mb-3 text-secondary">Listen to the Onyx Voice</h5>
+                            <audio controls class="w-100" style="max-width: 500px;">
+                                <source src="{{ url_for('static', filename='samples/gettysburg_onyx.mp3') }}" type="audio/mpeg">
+                                Your browser does not support the audio element.
+                            </audio>
+                            <!-- Remove this small tag once you've added your audio file! -->
+                            <p class="small text-muted mt-2 mb-0"><em>Note: To make this playable, place an MP3 file at <code>static/samples/gettysburg_onyx.mp3</code></em></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="mt-5">
+    <div class="container">
         <h2 class="text-center mb-4">How It Works</h2>
         <div class="row justify-content-center">
             <div class="col-lg-8">
