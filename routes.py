@@ -30,39 +30,11 @@ def index():
 
 @app.route('/login')
 def login():
-    """Redirect to Google login"""
+    """Render the login page"""
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
-    
-    # Check if this request is coming from the production domain
-    referer = request.headers.get('Referer', '')
-    request_domain = request.host
-    request_url = request.url
-    production_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
-    
-    # Log information for debugging
-    logger.info(f"Login Referer: {referer}")
-    logger.info(f"Login Request host domain: {request_domain}")
-    logger.info(f"Login Request URL: {request_url}")
-    
-    # CRITICAL: If we're on the production domain, special handling needed
-    if production_domain in request_domain:
-        # We are directly on the production domain
-        logger.info("PRODUCTION DOMAIN DETECTED: Direct access on production domain")
-        # Set a marker in the session that we're on production
-        session['is_production'] = True
-        session['oauth_domain'] = production_domain
-        return redirect(url_for('google_auth.login'))
-    elif production_domain in referer:
-        # We got here from the production domain
-        logger.info("PRODUCTION DOMAIN DETECTED: Referred from production domain")
-        # Set a marker in the session that we're on production
-        session['is_production'] = True
-        session['oauth_domain'] = production_domain
-        return redirect(url_for('google_auth.login'))
-    
-    # For development environment, proceed normally
-    return redirect(url_for('google_auth.login'))
+
+    return render_template('login.html', title='Login')
 
 
 @app.route('/register')

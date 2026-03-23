@@ -3,24 +3,59 @@
 {% block title %}Login - Text to Speech Converter{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h3 class="mb-0">Login</h3>
-            </div>
-            <div class="card-body text-center py-4">
-                <p class="mb-4">Sign in with your Google account to use the Text to Speech Converter.</p>
-                <div class="d-grid">
-                    <a href="{{ url_for('google_auth.login') }}" class="btn btn-primary btn-lg">
-                        <i class="fab fa-google me-2"></i>Sign in with Google
-                    </a>
+<section class="login-showcase">
+    <div class="row justify-content-center">
+        <div class="col-xl-10">
+            <div class="login-stage">
+                <div class="row g-0">
+                    <div class="col-lg-6">
+                        <div class="login-copy">
+                            <span class="section-label">Welcome Back</span>
+                            <h1 class="display-5 fw-bold mt-3 mb-3">Sign in and turn your text into a better listening experience.</h1>
+                            <p class="lead text-secondary mb-4">
+                                Use Google to jump straight into your dashboard, choose a voice, and generate MP3s for speeches, chapters, notes, and more.
+                            </p>
+                            <div class="login-points">
+                                <div class="login-point">
+                                    <i class="fas fa-circle-check text-primary"></i>
+                                    <span>Six voices with different tone and style</span>
+                                </div>
+                                <div class="login-point">
+                                    <i class="fas fa-circle-check text-primary"></i>
+                                    <span>Large text support up to 100,000 characters</span>
+                                </div>
+                                <div class="login-point">
+                                    <i class="fas fa-circle-check text-primary"></i>
+                                    <span>MP3 output that is easy to replay and share</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="login-panel-wrap">
+                            <div class="login-panel">
+                                <span class="login-panel-badge">Secure Google OAuth</span>
+                                <h2 class="h3 mt-3 mb-3">Continue with Google</h2>
+                                <p class="text-secondary mb-4">
+                                    Authentication is handled through Google, then you will land on your dashboard ready to convert text.
+                                </p>
+                                <div class="d-grid mb-4">
+                                    <a href="{{ url_for('google_auth.login') }}" class="btn btn-primary btn-lg">
+                                        <i class="fab fa-google me-2"></i>Continue with Google
+                                    </a>
+                                </div>
+                                <div class="login-trust-box">
+                                    <strong class="d-block mb-2">Why this flow works well</strong>
+                                    <p class="small text-secondary mb-0">
+                                        No extra password form here, just a direct and familiar sign-in path into the app.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div class="card-footer text-muted text-center">
-                <p class="mb-0">We use Google's secure authentication service to keep your account safe.</p>
             </div>
         </div>
     </div>
-</div>
+</section>
 {% endblock %}
