@@ -94,6 +94,7 @@ This is a Flask-based web application that converts text to speech using OpenAI'
 - **Migration Strategy**: Manual schema updates (recommended to add Flask-Migrate)
 - **Connection Pooling**: SQLAlchemy connection pool with pre-ping health checks
 - **Data Persistence**: Persistent storage for user data and conversion history
+- **Retention Policy**: Conversions older than `CONVERSION_RETENTION_DAYS` are automatically deleted, including related logs, metrics, and generated audio files. Defaults to 90 days.
 
 ## Changelog
 - June 27, 2025. Initial setup

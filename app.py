@@ -32,6 +32,10 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Configure file storage
 app.config["AUDIO_STORAGE_PATH"] = os.path.expanduser("~/persistent_audio_files")
 os.makedirs(app.config["AUDIO_STORAGE_PATH"], exist_ok=True)
+app.config["CONVERSION_RETENTION_DAYS"] = int(os.environ.get("CONVERSION_RETENTION_DAYS", "90"))
+app.config["CONVERSION_CLEANUP_INTERVAL_SECONDS"] = int(
+    os.environ.get("CONVERSION_CLEANUP_INTERVAL_SECONDS", str(24 * 60 * 60))
+)
 
 # Configure OpenAI
 app.config["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")

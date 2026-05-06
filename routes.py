@@ -12,10 +12,42 @@ from app import app, db
 from forms import LoginForm, RegistrationForm, ConversionForm
 from models import User, Conversion, ConversionMetrics, APILog
 from tts_converter import process_conversion, cancel_conversion
-from utils import cleanup_old_files
+from utils import cleanup_expired_conversions, cleanup_old_files
 from timezone_utils import format_seattle_time
 
 logger = logging.getLogger(__name__)
+_last_expired_cleanup_at = None
+
+
+@app.before_request
+def run_scheduled_conversion_cleanup():
+    """Run retention cleanup at most once per interval for this app process."""
+    global _last_expired_cleanup_at
+
+    if request.endpoint == 'static':
+        return
+
+    now = datetime.utcnow()
+    interval_seconds = app.config.get("CONVERSION_CLEANUP_INTERVAL_SECONDS", 24 * 60 * 60)
+    if (
+        _last_expired_cleanup_at
+        and (now - _last_expired_cleanup_at).total_seconds() < interval_seconds
+    ):
+        return
+
+    _last_expired_cleanup_at = now
+
+    try:
+        retention_days = app.config.get("CONVERSION_RETENTION_DAYS", 90)
+        result = cleanup_expired_conversions(retention_days=retention_days, now=now)
+        if result["conversions"]:
+            logger.info(
+                "Automatic conversion cleanup removed %s conversions and %s files",
+                result["conversions"],
+                result["files"],
+            )
+    except Exception as e:
+        logger.error(f"Automatic conversion cleanup failed: {str(e)}")
 
 @app.route('/')
 def index():
