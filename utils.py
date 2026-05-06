@@ -1,10 +1,196 @@
 import os
 import logging
 from datetime import datetime, timedelta
+from sqlalchemy import inspect, text, update
 from app import db
-from models import APILog, Conversion, ConversionMetrics
+from models import APILog, Conversion, ConversionMetrics, TTS_MODEL_FAST
 
 logger = logging.getLogger(__name__)
+
+DATABASE_INDEXES = (
+    ("ix_conversion_user_id", "conversion", "user_id"),
+    ("ix_conversion_created_at", "conversion", "created_at"),
+    ("ix_conversion_status", "conversion", "status"),
+    ("ix_api_log_conversion_id", "api_log", "conversion_id"),
+    ("ix_api_log_timestamp", "api_log", "timestamp"),
+)
+
+
+def _create_index_statement(index_name, table_name, column_name, concurrently=False):
+    concurrent_sql = " CONCURRENTLY" if concurrently else ""
+    return text(
+        f'CREATE INDEX{concurrent_sql} IF NOT EXISTS {index_name} '
+        f'ON "{table_name}" ("{column_name}")'
+    )
+
+
+def ensure_database_indexes():
+    """Create performance indexes that may be missing on existing databases."""
+    ensured_indexes = []
+
+    use_concurrently = db.engine.dialect.name == "postgresql"
+    if use_concurrently:
+        connection_context = db.engine.connect().execution_options(
+            isolation_level="AUTOCOMMIT"
+        )
+    else:
+        connection_context = db.engine.begin()
+
+    with connection_context as connection:
+        for index_name, table_name, column_name in DATABASE_INDEXES:
+            connection.execute(
+                _create_index_statement(
+                    index_name,
+                    table_name,
+                    column_name,
+                    concurrently=use_concurrently,
+                )
+            )
+            ensured_indexes.append(index_name)
+
+    logger.info("Ensured database indexes: %s", ", ".join(ensured_indexes))
+    return ensured_indexes
+
+
+def ensure_database_schema():
+    """Apply small idempotent schema additions for deployments without migrations."""
+    inspector = inspect(db.engine)
+    if not inspector.has_table("conversion"):
+        return {"changes": [], "tables_ready": False}
+
+    changes = []
+    conversion_columns = {
+        column["name"] for column in inspector.get_columns("conversion")
+    }
+
+    try:
+        if "tts_model" not in conversion_columns:
+            if db.engine.dialect.name == "postgresql":
+                statement = (
+                    'ALTER TABLE "conversion" '
+                    "ADD COLUMN IF NOT EXISTS tts_model VARCHAR(64) DEFAULT 'tts-1'"
+                )
+            else:
+                statement = (
+                    'ALTER TABLE "conversion" '
+                    "ADD COLUMN tts_model VARCHAR(64) DEFAULT 'tts-1'"
+                )
+            db.session.execute(text(statement))
+            changes.append("added conversion.tts_model")
+
+        result = db.session.execute(
+            update(Conversion)
+            .where(Conversion.tts_model.is_(None))
+            .values(tts_model=TTS_MODEL_FAST)
+        )
+        if result.rowcount:
+            changes.append(f"backfilled {result.rowcount} conversion.tts_model values")
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    if changes:
+        logger.info("Ensured database schema: %s", ", ".join(changes))
+    return {"changes": changes, "tables_ready": True}
+
+
+def _stale_conversion_cutoff(stale_after_minutes, now=None):
+    if stale_after_minutes < 1:
+        raise ValueError("stale_after_minutes must be at least 1")
+
+    return (now or datetime.utcnow()) - timedelta(minutes=stale_after_minutes)
+
+
+def requeue_stale_processing_conversions(stale_after_minutes=15, now=None, conversion_id=None):
+    """
+    Move interrupted processing conversions back to pending without starting work.
+
+    This is designed for app startup: it repairs database state after a deploy or
+    restart, while letting normal user polling restart only the conversion being
+    viewed.
+    """
+    cutoff = _stale_conversion_cutoff(stale_after_minutes, now=now)
+    query = Conversion.query.with_entities(Conversion.id).filter(
+        Conversion.status == 'processing',
+        Conversion.updated_at < cutoff,
+    )
+    if conversion_id is not None:
+        query = query.filter(Conversion.id == conversion_id)
+
+    stale_ids = [row.id for row in query.all()]
+    if not stale_ids:
+        return {"conversions": 0, "ids": [], "cutoff": cutoff}
+
+    try:
+        db.session.execute(
+            update(Conversion)
+            .where(Conversion.id.in_(stale_ids))
+            .values(
+                status='pending',
+                progress=0.0,
+                updated_at=Conversion.updated_at,
+            )
+        )
+        db.session.add_all([
+            APILog(
+                conversion_id=stale_id,
+                type='warning',
+                message=(
+                    "Conversion was reset to pending after an app restart or "
+                    "interrupted worker."
+                ),
+            )
+            for stale_id in stale_ids
+        ])
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
+    logger.warning(
+        "Requeued %s processing conversions stale for more than %s minutes",
+        len(stale_ids),
+        stale_after_minutes,
+    )
+    return {"conversions": len(stale_ids), "ids": stale_ids, "cutoff": cutoff}
+
+
+def claim_stale_pending_conversion_for_restart(conversion_id, stale_after_minutes=15, now=None):
+    """
+    Atomically claim one old pending conversion so only one request restarts it.
+    """
+    now = now or datetime.utcnow()
+    cutoff = _stale_conversion_cutoff(stale_after_minutes, now=now)
+
+    try:
+        result = db.session.execute(
+            update(Conversion)
+            .where(
+                Conversion.id == conversion_id,
+                Conversion.status == 'pending',
+                Conversion.updated_at < cutoff,
+            )
+            .values(
+                progress=0.0,
+                updated_at=now,
+            )
+        )
+        if result.rowcount != 1:
+            db.session.rollback()
+            return False
+
+        db.session.add(APILog(
+            conversion_id=conversion_id,
+            type='warning',
+            message="Conversion was restarted after a stale pending state.",
+        ))
+        db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def _delete_conversion_file(conversion):

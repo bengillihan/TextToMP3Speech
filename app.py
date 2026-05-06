@@ -3,6 +3,7 @@ import logging
 from urllib.parse import urlparse
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect
 from flask_login import LoginManager
 from sqlalchemy.orm import DeclarativeBase
 
@@ -12,6 +13,28 @@ def _env_flag(name, default=False):
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name, default, minimum=None, maximum=None):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+
+    try:
+        parsed = int(value)
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "Ignoring invalid integer for %s: %r",
+            name,
+            value,
+        )
+        return default
+
+    if minimum is not None and parsed < minimum:
+        return minimum
+    if maximum is not None and parsed > maximum:
+        return maximum
+    return parsed
 
 
 def _normalize_domain(value):
@@ -62,10 +85,21 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Configure file storage
 app.config["AUDIO_STORAGE_PATH"] = os.path.expanduser("~/persistent_audio_files")
 os.makedirs(app.config["AUDIO_STORAGE_PATH"], exist_ok=True)
-app.config["CONVERSION_RETENTION_DAYS"] = int(os.environ.get("CONVERSION_RETENTION_DAYS", "90"))
+app.config["CONVERSION_RETENTION_DAYS"] = _env_int("CONVERSION_RETENTION_DAYS", 90, minimum=1)
+app.config["STUCK_CONVERSION_MINUTES"] = _env_int("STUCK_CONVERSION_MINUTES", 15, minimum=1)
+app.config["RECOVER_STUCK_CONVERSIONS_ON_STARTUP"] = _env_flag(
+    "RECOVER_STUCK_CONVERSIONS_ON_STARTUP",
+    True,
+)
 
 # Configure OpenAI
 app.config["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
+app.config["TTS_MAX_PARALLEL_CHUNKS"] = _env_int(
+    "TTS_MAX_PARALLEL_CHUNKS",
+    3,
+    minimum=1,
+    maximum=4,
+)
 
 # Initialize the extensions with the app
 db.init_app(app)
@@ -95,3 +129,35 @@ with app.app_context():
         logger.info("Database tables created")
     else:
         logger.info("Skipping db.create_all because AUTO_CREATE_TABLES is disabled")
+
+    from utils import ensure_database_schema
+
+    try:
+        schema_result = ensure_database_schema()
+        if schema_result["changes"]:
+            logger.info(
+                "Applied database schema updates: %s",
+                ", ".join(schema_result["changes"]),
+            )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Unable to ensure database schema")
+
+    if app.config["RECOVER_STUCK_CONVERSIONS_ON_STARTUP"]:
+        from utils import requeue_stale_processing_conversions
+
+        try:
+            if inspect(db.engine).has_table("conversion"):
+                result = requeue_stale_processing_conversions(
+                    stale_after_minutes=app.config["STUCK_CONVERSION_MINUTES"]
+                )
+                if result["conversions"]:
+                    logger.info(
+                        "Requeued %s stale processing conversions on startup",
+                        result["conversions"],
+                    )
+            else:
+                logger.info("Skipping stuck conversion recovery because tables do not exist")
+        except Exception:
+            db.session.rollback()
+            logger.exception("Unable to requeue stale processing conversions on startup")

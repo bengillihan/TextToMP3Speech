@@ -1,7 +1,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Email, EqualTo, ValidationError, Length
-from models import User
+from models import TTS_MODEL_CHOICES, TTS_MODEL_FAST, User
 
 
 class LoginForm(FlaskForm):
@@ -43,4 +43,10 @@ class ConversionForm(FlaskForm):
                            ('nova', 'Nova - Warm and pleasant'),
                            ('shimmer', 'Shimmer - Clear, bright, and engaging')
                        ], default='onyx')
+    tts_model = SelectField(
+        'Conversion Mode',
+        validators=[DataRequired()],
+        choices=TTS_MODEL_CHOICES,
+        default=TTS_MODEL_FAST,
+    )
     submit = SubmitField('Convert to Speech')

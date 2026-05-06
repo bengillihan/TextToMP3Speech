@@ -13,7 +13,7 @@ from threading import Thread
 # Import the OpenAI client - using the latest SDK
 from openai import AsyncOpenAI, OpenAI
 from app import app, db
-from models import Conversion, ConversionMetrics, APILog
+from models import Conversion, ConversionMetrics, APILog, normalize_tts_model
 
 # Set up detailed logging to both file and console
 logger = logging.getLogger(__name__)
@@ -305,10 +305,10 @@ async def _process_conversion(conversion_id):
         # Process chunks in parallel with a limit on concurrent API calls
         try:
             # Limit concurrent API calls to avoid rate limiting and improve reliability
-            MAX_PARALLEL_CALLS = 5  # Maximum number of concurrent API calls
+            max_parallel_calls = app.config.get("TTS_MAX_PARALLEL_CHUNKS", 3)
             
             # Use a semaphore to limit concurrent API calls
-            semaphore = asyncio.Semaphore(MAX_PARALLEL_CALLS)
+            semaphore = asyncio.Semaphore(max_parallel_calls)
             
             async def process_with_semaphore(i, chunk):
                 async with semaphore:
@@ -317,7 +317,11 @@ async def _process_conversion(conversion_id):
             # Create tasks with semaphore protection
             tasks = []
             total_chunks = len(chunks)
-            logger.info(f"Starting parallel processing of {total_chunks} chunks with max {MAX_PARALLEL_CALLS} concurrent calls")
+            logger.info(
+                "Starting parallel processing of %s chunks with max %s concurrent calls",
+                total_chunks,
+                max_parallel_calls,
+            )
             for i, chunk in enumerate(chunks):
                 tasks.append(process_with_semaphore(i, chunk))
             
@@ -491,7 +495,8 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
             
             # Get the voice from the conversion record
             voice = conversion.voice if conversion.voice else "onyx"
-            logger.info(f"Using voice '{voice}' for chunk {chunk_index}")
+            tts_model = normalize_tts_model(conversion.tts_model)
+            logger.info(f"Using voice '{voice}' and model '{tts_model}' for chunk {chunk_index}")
             
             # Log OpenAI API key status (without revealing the key)
             logger.info(f"Checking OpenAI API key for chunk {chunk_index}")
@@ -523,19 +528,19 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                     # Method 1: Try direct file writing using write_to_file (recommended method)
                     logger.info(f"Using write_to_file for chunk {chunk_index}")
                     # Make the API call and write directly to a file
-                    logger.info(f"Making OpenAI TTS API call for chunk {chunk_index} with voice: {voice}")
+                    logger.info(f"Making OpenAI TTS API call for chunk {chunk_index} with voice: {voice}, model: {tts_model}")
                     logger.info(f"Text length for chunk {chunk_index}: {len(text)} characters")
                     
                     api_start_time = time.time()
                     try:
                         # Make the API call with enhanced debugging
-                        logger.info(f"About to make API call with voice={voice}, text length={len(text)}")
+                        logger.info(f"About to make API call with model={tts_model}, voice={voice}, text length={len(text)}")
                         logger.info(f"Using API key: {api_key[:4]}... (key format validation: valid={api_key.startswith('sk-')})")
                         
                         # Make the actual API call with more debug info
                         try:
                             response = await client.audio.speech.create(
-                                model="tts-1",
+                                model=tts_model,
                                 voice=voice,
                                 input=text
                             )

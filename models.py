@@ -4,6 +4,23 @@ from app import db, login_manager
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
+TTS_MODEL_FAST = 'tts-1'
+TTS_MODEL_QUALITY = 'gpt-4o-mini-tts'
+TTS_MODEL_LABELS = {
+    TTS_MODEL_FAST: 'Fast',
+    TTS_MODEL_QUALITY: 'Quality',
+}
+TTS_MODEL_CHOICES = [
+    (TTS_MODEL_FAST, 'Fast - lower latency'),
+    (TTS_MODEL_QUALITY, 'Quality - better voice and control'),
+]
+
+
+def normalize_tts_model(tts_model):
+    if tts_model in TTS_MODEL_LABELS:
+        return tts_model
+    return TTS_MODEL_FAST
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -29,11 +46,18 @@ class User(UserMixin, db.Model):
 
 
 class Conversion(db.Model):
+    __table_args__ = (
+        db.Index('ix_conversion_user_id', 'user_id'),
+        db.Index('ix_conversion_created_at', 'created_at'),
+        db.Index('ix_conversion_status', 'status'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     title = db.Column(db.String(256), nullable=False)
     text = db.Column(db.Text, nullable=False)
     voice = db.Column(db.String(20), default='onyx')  # Store the selected voice
+    tts_model = db.Column(db.String(64), nullable=False, default=TTS_MODEL_FAST)
     status = db.Column(db.String(20), default='pending')  # pending, processing, completed, failed, cancelled
     progress = db.Column(db.Float, default=0.0)  # 0-100%
     uuid = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
@@ -52,6 +76,10 @@ class Conversion(db.Model):
         return ConversionMetrics.query.filter_by(conversion_id=self.id).order_by(
             desc(ConversionMetrics.id)).first()
     logs = db.relationship('APILog', backref='conversion', lazy='dynamic', cascade="all, delete-orphan")
+
+    @property
+    def tts_model_label(self):
+        return TTS_MODEL_LABELS.get(normalize_tts_model(self.tts_model), 'Fast')
 
     def __repr__(self):
         return f'<Conversion {self.title}>'
@@ -73,6 +101,11 @@ class ConversionMetrics(db.Model):
 
 
 class APILog(db.Model):
+    __table_args__ = (
+        db.Index('ix_api_log_conversion_id', 'conversion_id'),
+        db.Index('ix_api_log_timestamp', 'timestamp'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     conversion_id = db.Column(db.Integer, db.ForeignKey('conversion.id'), nullable=False)
     type = db.Column(db.String(20), nullable=False)  # error, warning, info

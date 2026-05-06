@@ -30,6 +30,9 @@ Increase `WEB_CONCURRENCY` only if request traffic needs it. Each extra worker a
 ## Optional Environment Variables
 
 - `CONVERSION_RETENTION_DAYS`: Conversion retention window. Defaults to `90`.
+- `STUCK_CONVERSION_MINUTES`: Minutes without a conversion update before it is considered interrupted. Defaults to `15`.
+- `RECOVER_STUCK_CONVERSIONS_ON_STARTUP`: Requeue stale `processing` conversions on app startup. Defaults to `true`.
+- `TTS_MAX_PARALLEL_CHUNKS`: Max parallel OpenAI TTS chunk requests per conversion. Defaults to `3` and is capped at `4`.
 - `AUTO_CREATE_TABLES`: Set to `false` on Railway after the database schema exists.
 - `DIAGNOSTICS_ENABLED`: Set to `true` only when diagnostics are needed.
 - `DIAGNOSTIC_ADMIN_EMAILS`: Comma-separated admin emails allowed to use diagnostics.
@@ -43,3 +46,14 @@ python -m flask --app main cleanup-conversions
 ```
 
 This deletes expired conversions, related logs/metrics, and generated audio files. Keeping this as a scheduled job avoids doing cleanup work during normal web requests.
+
+## Database Indexes
+
+After restoring or migrating a database, run this one-time idempotent command:
+
+```sh
+python -m flask --app main ensure-db-schema
+python -m flask --app main ensure-db-indexes
+```
+
+Schema additions are also checked at app startup. Indexes keep dashboard, history, progress-log, and cleanup queries cheaper as data grows.

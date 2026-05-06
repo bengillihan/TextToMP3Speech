@@ -31,6 +31,7 @@
             <div class="card-body">
                 <div class="mb-3">
                     <p class="mb-1"><strong>Created:</strong> {{ format_seattle_time(conversion.created_at, '%Y-%m-%d %H:%M') }} (Seattle time)</p>
+                    <p class="mb-1"><strong>Mode:</strong> {{ conversion.tts_model_label }}</p>
                     <p class="mb-1"><strong>Text Length:</strong> {{ conversion.text|length }} characters</p>
                     {% if conversion.metrics %}
                     <p class="mb-1"><strong>Chunks:</strong> {{ conversion.metrics.chunk_count }}</p>

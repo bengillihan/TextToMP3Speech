@@ -12,9 +12,16 @@ from urllib.parse import urlparse
 
 from app import app, db
 from forms import LoginForm, RegistrationForm, ConversionForm
-from models import User, Conversion, ConversionMetrics, APILog
+from models import User, Conversion, ConversionMetrics, APILog, normalize_tts_model
 from tts_converter import process_conversion, cancel_conversion
-from utils import cleanup_expired_conversions, cleanup_old_files
+from utils import (
+    claim_stale_pending_conversion_for_restart,
+    cleanup_expired_conversions,
+    cleanup_old_files,
+    ensure_database_schema,
+    ensure_database_indexes,
+    requeue_stale_processing_conversions,
+)
 from timezone_utils import format_seattle_time
 
 logger = logging.getLogger(__name__)
@@ -52,6 +59,26 @@ def cleanup_conversions_command(retention_days):
             days=retention_days,
         )
     )
+
+
+@app.cli.command("ensure-db-indexes")
+def ensure_db_indexes_command():
+    """Create database indexes used by history, status, log, and cleanup queries."""
+    ensured_indexes = ensure_database_indexes()
+    click.echo("Ensured database indexes: {indexes}".format(
+        indexes=", ".join(ensured_indexes)
+    ))
+
+
+@app.cli.command("ensure-db-schema")
+def ensure_db_schema_command():
+    """Create lightweight schema additions missing from existing deployments."""
+    result = ensure_database_schema()
+    changes = result["changes"] or ["no changes needed"]
+    click.echo("Ensured database schema: {changes}".format(
+        changes=", ".join(changes)
+    ))
+
 
 @app.route('/')
 def index():
@@ -149,6 +176,7 @@ def convert():
                 title=title,
                 text=form.text.data,
                 voice=form.voice.data,  # Add the selected voice
+                tts_model=normalize_tts_model(form.tts_model.data),
                 status='pending',
                 progress=0.0
             )
@@ -226,29 +254,29 @@ def conversion_progress(uuid):
         
         logger.info(f"Progress for conversion {uuid}: status={conversion.status}, progress={conversion.progress}")
         
-        # Check if processing is stuck (no progress for 5 minutes)
-        if conversion.status == 'processing' and conversion.progress == 0.0:
-            # Calculate time since last update
-            time_since_update = datetime.utcnow() - conversion.updated_at
-            if time_since_update.total_seconds() > 300:  # 5 minutes
-                logger.warning(f"Conversion {uuid} appears stuck in processing state, restarting")
-                # Mark for restart
-                conversion.status = 'pending'
-                conversion.progress = 0.0
-                db.session.add(APILog(
-                    conversion_id=conversion.id,
-                    type='warning',
-                    message="Conversion appeared stuck and was restarted"
-                ))
-                db.session.commit()
-                
-                # Restart the conversion process
+        stale_after_minutes = app.config.get("STUCK_CONVERSION_MINUTES", 15)
+        if conversion.status == 'processing':
+            result = requeue_stale_processing_conversions(
+                stale_after_minutes=stale_after_minutes,
+                conversion_id=conversion.id,
+            )
+            if result["conversions"]:
+                logger.warning(f"Conversion {uuid} was stale in processing state, requeued")
+                db.session.refresh(conversion)
+
+        if conversion.status == 'pending':
+            restarted = claim_stale_pending_conversion_for_restart(
+                conversion.id,
+                stale_after_minutes=stale_after_minutes,
+            )
+            if restarted:
+                logger.warning(f"Restarting stale pending conversion {uuid}")
                 process_conversion(conversion.id)
-                
+
                 return jsonify({
-                    'status': 'restarting',
+                    'status': 'processing',
                     'progress': 0.0,
-                    'message': 'Conversion appeared stuck and is being restarted'
+                    'message': 'Conversion was interrupted and is being restarted'
                 })
         
         # Check if the file exists if status is completed
@@ -476,6 +504,8 @@ def conversion_diagnostic(uuid):
                 'title': conversion.title,
                 'text_length': len(conversion.text) if conversion.text else 0,
                 'voice': conversion.voice,
+                'tts_model': conversion.tts_model,
+                'tts_model_label': conversion.tts_model_label,
                 'status': conversion.status,
                 'progress': conversion.progress,
                 'file_path': conversion.file_path,
@@ -540,6 +570,8 @@ def all_conversions_diagnostic():
             'status': conv.status,
             'progress': conv.progress,
             'voice': conv.voice,
+            'tts_model': conv.tts_model,
+            'tts_model_label': conv.tts_model_label,
             'created_at': format_seattle_time(conv.created_at),
             'updated_at': format_seattle_time(conv.updated_at)
         } for conv in conversions]

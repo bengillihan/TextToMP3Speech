@@ -97,6 +97,7 @@
                             <tr>
                                 <th>Title</th>
                                 <th>Status</th>
+                                <th>Mode</th>
                                 <th>Created</th>
                                 <th>Progress</th>
                                 <th>Actions</th>
@@ -111,6 +112,7 @@
                                         {{ conversion.status|capitalize }}
                                     </span>
                                 </td>
+                                <td>{{ conversion.tts_model_label }}</td>
                                 <td>{{ format_seattle_time(conversion.created_at, '%Y-%m-%d %H:%M') }} (Seattle time)</td>
                                 <td style="width: 30%;">
                                     <div class="progress">
