@@ -1,7 +1,13 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Email, EqualTo, ValidationError, Length
-from models import TTS_MODEL_CHOICES, TTS_MODEL_FAST, User
+from models import (
+    DEFAULT_CONVERSION_RETENTION_DAYS,
+    RETENTION_POLICY_CHOICES,
+    TTS_MODEL_CHOICES,
+    TTS_MODEL_FAST,
+    User,
+)
 
 
 class LoginForm(FlaskForm):
@@ -48,5 +54,11 @@ class ConversionForm(FlaskForm):
         validators=[DataRequired()],
         choices=TTS_MODEL_CHOICES,
         default=TTS_MODEL_FAST,
+    )
+    retention_policy = SelectField(
+        'Storage',
+        validators=[DataRequired()],
+        choices=RETENTION_POLICY_CHOICES,
+        default=str(DEFAULT_CONVERSION_RETENTION_DAYS),
     )
     submit = SubmitField('Convert to Speech')

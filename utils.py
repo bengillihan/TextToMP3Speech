@@ -3,7 +3,14 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy import inspect, text, update
 from app import db
-from models import APILog, Conversion, ConversionMetrics, TTS_MODEL_FAST
+from models import (
+    DEFAULT_CONVERSION_RETENTION_DAYS,
+    RETENTION_DAY_CHOICES,
+    APILog,
+    Conversion,
+    ConversionMetrics,
+    TTS_MODEL_FAST,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +85,34 @@ def ensure_database_schema():
             db.session.execute(text(statement))
             changes.append("added conversion.tts_model")
 
+        if "keep_forever" not in conversion_columns:
+            if db.engine.dialect.name == "postgresql":
+                statement = (
+                    'ALTER TABLE "conversion" '
+                    "ADD COLUMN IF NOT EXISTS keep_forever BOOLEAN DEFAULT FALSE"
+                )
+            else:
+                statement = (
+                    'ALTER TABLE "conversion" '
+                    "ADD COLUMN keep_forever BOOLEAN DEFAULT FALSE"
+                )
+            db.session.execute(text(statement))
+            changes.append("added conversion.keep_forever")
+
+        if "retention_days" not in conversion_columns:
+            if db.engine.dialect.name == "postgresql":
+                statement = (
+                    'ALTER TABLE "conversion" '
+                    f"ADD COLUMN IF NOT EXISTS retention_days INTEGER DEFAULT {DEFAULT_CONVERSION_RETENTION_DAYS}"
+                )
+            else:
+                statement = (
+                    'ALTER TABLE "conversion" '
+                    f"ADD COLUMN retention_days INTEGER DEFAULT {DEFAULT_CONVERSION_RETENTION_DAYS}"
+                )
+            db.session.execute(text(statement))
+            changes.append("added conversion.retention_days")
+
         result = db.session.execute(
             update(Conversion)
             .where(Conversion.tts_model.is_(None))
@@ -85,6 +120,22 @@ def ensure_database_schema():
         )
         if result.rowcount:
             changes.append(f"backfilled {result.rowcount} conversion.tts_model values")
+
+        result = db.session.execute(
+            update(Conversion)
+            .where(Conversion.keep_forever.is_(None))
+            .values(keep_forever=False)
+        )
+        if result.rowcount:
+            changes.append(f"backfilled {result.rowcount} conversion.keep_forever values")
+
+        result = db.session.execute(
+            update(Conversion)
+            .where(Conversion.retention_days.is_(None))
+            .values(retention_days=DEFAULT_CONVERSION_RETENTION_DAYS)
+        )
+        if result.rowcount:
+            changes.append(f"backfilled {result.rowcount} conversion.retention_days values")
 
         db.session.commit()
     except Exception:
@@ -209,6 +260,15 @@ def _delete_conversion_file(conversion):
         return False
 
 
+def _conversion_retention_days(conversion, default_retention_days):
+    try:
+        retention_days = int(conversion.retention_days or default_retention_days)
+    except (TypeError, ValueError):
+        retention_days = default_retention_days
+
+    return max(1, retention_days)
+
+
 def cleanup_expired_conversions(retention_days=90, now=None):
     """
     Delete conversions older than the retention window, including related logs,
@@ -224,16 +284,27 @@ def cleanup_expired_conversions(retention_days=90, now=None):
     if retention_days < 1:
         raise ValueError("retention_days must be at least 1")
 
-    cutoff = (now or datetime.utcnow()) - timedelta(days=retention_days)
-    expired_conversions = Conversion.query.filter(
-        Conversion.created_at < cutoff
+    now = now or datetime.utcnow()
+    shortest_retention_days = min(RETENTION_DAY_CHOICES + (retention_days,))
+    earliest_cutoff = now - timedelta(days=shortest_retention_days)
+    candidates = Conversion.query.filter(
+        Conversion.keep_forever.isnot(True),
+        Conversion.created_at < earliest_cutoff,
     ).all()
 
     deleted_files = 0
     deleted_conversions = 0
 
     try:
-        for conversion in expired_conversions:
+        for conversion in candidates:
+            conversion_retention_days = _conversion_retention_days(
+                conversion,
+                retention_days,
+            )
+            cutoff = now - timedelta(days=conversion_retention_days)
+            if conversion.created_at >= cutoff:
+                continue
+
             if _delete_conversion_file(conversion):
                 deleted_files += 1
 
@@ -250,16 +321,15 @@ def cleanup_expired_conversions(retention_days=90, now=None):
 
         if deleted_conversions:
             logger.info(
-                "Deleted %s conversions older than %s days and %s audio files",
+                "Deleted %s expired conversions and %s audio files",
                 deleted_conversions,
-                retention_days,
                 deleted_files,
             )
 
         return {
             "conversions": deleted_conversions,
             "files": deleted_files,
-            "cutoff": cutoff,
+            "cutoff": earliest_cutoff,
         }
     except Exception:
         db.session.rollback()
@@ -281,6 +351,8 @@ def cleanup_old_files(user_id, keep_latest=50):
         conversions = Conversion.query.filter_by(
             user_id=user_id, 
             status='completed'
+        ).filter(
+            Conversion.keep_forever.isnot(True)
         ).order_by(Conversion.created_at.desc()).all()
         
         # If we have more than keep_latest, delete the oldest ones

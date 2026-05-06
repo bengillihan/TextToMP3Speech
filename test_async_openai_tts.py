@@ -24,28 +24,14 @@ async def test_async_tts():
         temp_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
         temp_file.close()
         
-        # Try a simple TTS API call
-        print("Making async API call...")
-        response = await client.audio.speech.create(
+        # Try a simple TTS API call and stream the audio directly to disk.
+        print("Making async streaming API call...")
+        async with client.audio.speech.with_streaming_response.create(
             model="tts-1",
             voice="alloy",
             input="Hello, this is a test of the OpenAI TTS API using AsyncOpenAI client."
-        )
-        
-        # Investigate the response
-        print(f"Response type: {type(response)}")
-        print(f"Response attributes: {dir(response)}")
-        
-        # Save the audio data to a file
-        print("Reading content...")
-        # Use the read() method but do not await it
-        content = response.read()
-        print(f"Content type: {type(content)}")
-        print(f"Content length: {len(content) if content else 'None'}")
-        
-        print("Writing response to file...")
-        with open(temp_file.name, 'wb') as f:
-            f.write(content)
+        ) as response:
+            await response.stream_to_file(temp_file.name)
         
         # Check if the file exists and has content
         file_size = os.path.getsize(temp_file.name)

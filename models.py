@@ -15,11 +15,36 @@ TTS_MODEL_CHOICES = [
     (TTS_MODEL_QUALITY, 'Quality - better voice and control'),
 ]
 
+DEFAULT_CONVERSION_RETENTION_DAYS = 90
+RETENTION_KEEP = 'keep'
+RETENTION_DAY_CHOICES = (7, 30, 90)
+RETENTION_POLICY_CHOICES = [
+    ('7', 'Auto-delete after 7 days'),
+    ('30', 'Auto-delete after 30 days'),
+    ('90', 'Auto-delete after 90 days'),
+    (RETENTION_KEEP, 'Keep until I delete it'),
+]
+
 
 def normalize_tts_model(tts_model):
     if tts_model in TTS_MODEL_LABELS:
         return tts_model
     return TTS_MODEL_FAST
+
+
+def retention_settings_from_policy(policy_value, default_days=DEFAULT_CONVERSION_RETENTION_DAYS):
+    if policy_value == RETENTION_KEEP:
+        return True, default_days
+
+    try:
+        retention_days = int(policy_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid retention policy") from exc
+
+    if retention_days not in RETENTION_DAY_CHOICES:
+        raise ValueError("Invalid retention policy")
+
+    return False, retention_days
 
 
 @login_manager.user_loader
@@ -58,6 +83,8 @@ class Conversion(db.Model):
     text = db.Column(db.Text, nullable=False)
     voice = db.Column(db.String(20), default='onyx')  # Store the selected voice
     tts_model = db.Column(db.String(64), nullable=False, default=TTS_MODEL_FAST)
+    keep_forever = db.Column(db.Boolean, nullable=False, default=False)
+    retention_days = db.Column(db.Integer, nullable=False, default=DEFAULT_CONVERSION_RETENTION_DAYS)
     status = db.Column(db.String(20), default='pending')  # pending, processing, completed, failed, cancelled
     progress = db.Column(db.Float, default=0.0)  # 0-100%
     uuid = db.Column(db.String(36), default=lambda: str(uuid.uuid4()), unique=True)
@@ -80,6 +107,19 @@ class Conversion(db.Model):
     @property
     def tts_model_label(self):
         return TTS_MODEL_LABELS.get(normalize_tts_model(self.tts_model), 'Fast')
+
+    @property
+    def retention_policy_value(self):
+        if self.keep_forever:
+            return RETENTION_KEEP
+        return str(self.retention_days or DEFAULT_CONVERSION_RETENTION_DAYS)
+
+    @property
+    def retention_label(self):
+        if self.keep_forever:
+            return 'Keep'
+        retention_days = self.retention_days or DEFAULT_CONVERSION_RETENTION_DAYS
+        return f'Auto-delete after {retention_days} days'
 
     def __repr__(self):
         return f'<Conversion {self.title}>'

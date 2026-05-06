@@ -50,6 +50,18 @@ def should_cancel(conversion_id):
     """Check if a conversion has been marked for cancellation"""
     return cancellation_requests.get(conversion_id, False)
 
+
+async def stream_tts_chunk_to_file(client, *, tts_model, voice, text, output_path):
+    """Stream one OpenAI TTS response directly to disk."""
+    async with client.audio.speech.with_streaming_response.create(
+        model=tts_model,
+        voice=voice,
+        input=text,
+    ) as response:
+        await response.stream_to_file(output_path)
+        return getattr(response, "status_code", None)
+
+
 def process_conversion(conversion_id):
     """Start the conversion process in a background thread"""
     logger.info(f"Creating background thread for conversion_id: {conversion_id}")
@@ -525,9 +537,7 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                         # Double the delay for the next retry (exponential backoff)
                         retry_delay *= 2
                     
-                    # Method 1: Try direct file writing using write_to_file (recommended method)
-                    logger.info(f"Using write_to_file for chunk {chunk_index}")
-                    # Make the API call and write directly to a file
+                    logger.info(f"Streaming TTS audio directly to file for chunk {chunk_index}")
                     logger.info(f"Making OpenAI TTS API call for chunk {chunk_index} with voice: {voice}, model: {tts_model}")
                     logger.info(f"Text length for chunk {chunk_index}: {len(text)} characters")
                     
@@ -537,14 +547,23 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                         logger.info(f"About to make API call with model={tts_model}, voice={voice}, text length={len(text)}")
                         logger.info(f"Using API key: {api_key[:4]}... (key format validation: valid={api_key.startswith('sk-')})")
                         
-                        # Make the actual API call with more debug info
+                        # Make the actual API call and stream audio directly to disk.
                         try:
-                            response = await client.audio.speech.create(
-                                model=tts_model,
+                            if os.path.exists(temp_file_path):
+                                os.remove(temp_file_path)
+
+                            status_code = await stream_tts_chunk_to_file(
+                                client,
+                                tts_model=tts_model,
                                 voice=voice,
-                                input=text
+                                text=text,
+                                output_path=temp_file_path,
                             )
-                            logger.info(f"API call succeeded with response type: {type(response).__name__}")
+                            logger.info(
+                                "Streaming TTS API call succeeded for chunk %s with status %s",
+                                chunk_index,
+                                status_code,
+                            )
                         except Exception as api_e:
                             logger.error(f"API call failed with exception: {str(api_e)}")
                             logger.error(f"Exception type: {type(api_e).__name__}")
@@ -552,7 +571,6 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                             raise
                         api_time = time.time() - api_start_time
                         logger.info(f"OpenAI TTS API call successful for chunk {chunk_index} in {api_time:.2f} seconds")
-                        logger.info(f"Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
                     except Exception as api_error:
                         error_msg = str(api_error)
                         logger.error(f"OpenAI TTS API call failed for chunk {chunk_index}: {error_msg}")
@@ -588,31 +606,11 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                         
                         # We're raising to trigger retry logic
                         raise
-                    
-                    # Handle HttpxBinaryResponseContent correctly
-                    try:
-                        logger.info(f"Response type: {type(response).__name__}")
-                        
-                        # Get the actual bytes content using aread()
-                        logger.info(f"Reading binary content from response")
-                        content = await response.aread()
-                        logger.info(f"Successfully read {len(content)} bytes from response")
-                        
-                        # Write the binary content to file
-                        logger.info(f"Writing binary content to file: {temp_file_path}")
-                        with open(temp_file_path, 'wb') as f:
-                            f.write(content)
-                        logger.info(f"Successfully wrote {len(content)} bytes to file")
-                        success = True
-                    except Exception as e:
-                        logger.error(f"Failed to process response: {str(e)}")
-                        logger.error(f"Response type: {type(response).__name__}")
-                        logger.error(f"Available response methods: {[method for method in dir(response) if not method.startswith('_')]}")
-                        raise
-                    
+
                     # Verify the file was created successfully
                     if os.path.exists(temp_file_path) and os.path.getsize(temp_file_path) > 0:
-                        logger.info(f"Verified file exists: {temp_file_path} ({os.path.getsize(temp_file_path)} bytes)")
+                        success = True
+                        logger.info(f"Verified streamed file exists: {temp_file_path} ({os.path.getsize(temp_file_path)} bytes)")
                         break  # Success! Break out of retry loop
                     else:
                         raise Exception(f"Failed to create file or file is empty: {temp_file_path}")

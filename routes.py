@@ -12,7 +12,15 @@ from urllib.parse import urlparse
 
 from app import app, db
 from forms import LoginForm, RegistrationForm, ConversionForm
-from models import User, Conversion, ConversionMetrics, APILog, normalize_tts_model
+from models import (
+    RETENTION_POLICY_CHOICES,
+    User,
+    Conversion,
+    ConversionMetrics,
+    APILog,
+    normalize_tts_model,
+    retention_settings_from_policy,
+)
 from tts_converter import process_conversion, cancel_conversion
 from utils import (
     claim_stale_pending_conversion_for_restart,
@@ -167,8 +175,11 @@ def convert():
                 title = first_line[:256]
             else:
                 title = "Untitled Conversion"
-        
         try:
+            keep_forever, retention_days = retention_settings_from_policy(
+                form.retention_policy.data,
+                default_days=app.config.get("CONVERSION_RETENTION_DAYS", 90),
+            )
             logger.info(f"Creating new conversion record for user: {current_user.id}, title: {title}")
             # Create new conversion record
             conversion = Conversion(
@@ -177,6 +188,8 @@ def convert():
                 text=form.text.data,
                 voice=form.voice.data,  # Add the selected voice
                 tts_model=normalize_tts_model(form.tts_model.data),
+                keep_forever=keep_forever,
+                retention_days=retention_days,
                 status='pending',
                 progress=0.0
             )
@@ -229,6 +242,32 @@ def convert():
     return render_template('convert.html', title='Convert Text to Speech', form=form)
 
 
+@app.route('/conversion/<uuid>/retention', methods=['POST'])
+@login_required
+def update_conversion_retention(uuid):
+    conversion = Conversion.query.filter_by(uuid=uuid).first_or_404()
+
+    if conversion.user_id != current_user.id:
+        flash('You do not have permission to update this conversion', 'danger')
+        return redirect(url_for('conversions'))
+
+    try:
+        keep_forever, retention_days = retention_settings_from_policy(
+            request.form.get('retention_policy'),
+            default_days=app.config.get("CONVERSION_RETENTION_DAYS", 90),
+        )
+    except ValueError:
+        flash('Invalid storage setting', 'danger')
+        return redirect(url_for('conversions'))
+
+    conversion.keep_forever = keep_forever
+    conversion.retention_days = retention_days
+    db.session.commit()
+
+    flash(f'Storage updated for "{conversion.title}".', 'success')
+    return redirect(url_for('conversions'))
+
+
 @app.route('/conversions')
 @login_required
 def conversions():
@@ -237,6 +276,7 @@ def conversions():
     return render_template('conversions.html', 
                           title='My Conversions', 
                           conversions=user_conversions,
+                          retention_policy_choices=RETENTION_POLICY_CHOICES,
                           format_seattle_time=format_seattle_time)
 
 
@@ -427,26 +467,19 @@ def openai_diagnostic():
         
         # Test TTS API specifically
         logger.info("OpenAI diagnostic: Testing OpenAI TTS API")
-        tts_response = client.audio.speech.create(
+        temp_path = "/tmp/test_tts.mp3"
+        with client.audio.speech.with_streaming_response.create(
             model="tts-1",
             voice="alloy",
             input="This is a diagnostic test of the OpenAI TTS API."
-        )
-        
-        # Analyze TTS response
-        tts_type = type(tts_response).__name__
-        tts_attrs = dir(tts_response)
-        logger.info(f"OpenAI diagnostic: TTS response type: {tts_type}")
-        logger.info(f"OpenAI diagnostic: TTS response attributes: {tts_attrs}")
-        
-        # Try the write_to_file method
-        temp_path = "/tmp/test_tts.mp3"
-        if hasattr(tts_response, 'write_to_file'):
-            tts_response.write_to_file(temp_path)
+        ) as tts_response:
+            tts_type = type(tts_response).__name__
+            tts_attrs = dir(tts_response)
+            logger.info(f"OpenAI diagnostic: TTS response type: {tts_type}")
+            logger.info(f"OpenAI diagnostic: TTS response attributes: {tts_attrs}")
+            tts_response.stream_to_file(temp_path)
             file_size = os.path.getsize(temp_path) if os.path.exists(temp_path) else 0
-            logger.info(f"OpenAI diagnostic: Successfully wrote file with size: {file_size} bytes")
-        else:
-            logger.warning("OpenAI diagnostic: write_to_file method not available")
+            logger.info(f"OpenAI diagnostic: Successfully streamed file with size: {file_size} bytes")
         
         return jsonify({
             'status': 'success',
@@ -733,30 +766,21 @@ def api_health_check():
         
         # Test TTS API specifically
         logger.info("Testing OpenAI TTS API")
-        tts_response = client.audio.speech.create(
+        temp_path = "/tmp/api_health_tts.mp3"
+        with client.audio.speech.with_streaming_response.create(
             model="tts-1",
             voice="alloy",
             input="This is a test of the OpenAI TTS API."
-        )
-        
-        # Analyze TTS response
-        tts_type = type(tts_response).__name__
-        tts_attrs = dir(tts_response)
-        logger.info(f"TTS response type: {tts_type}")
-        logger.info(f"TTS response attributes: {tts_attrs}")
-        
-        # Try to read the content
-        try:
-            if hasattr(tts_response, 'read'):
-                content = tts_response.read()
-                logger.info(f"TTS content size: {len(content)} bytes")
-            elif hasattr(tts_response, 'content'):
-                content = tts_response.content
-                logger.info(f"TTS content size: {len(content)} bytes")
-            else:
-                logger.warning("TTS response has no standard content attributes")
-        except Exception as read_error:
-            logger.error(f"Error reading TTS content: {str(read_error)}")
+        ) as tts_response:
+            tts_type = type(tts_response).__name__
+            tts_attrs = dir(tts_response)
+            logger.info(f"TTS response type: {tts_type}")
+            logger.info(f"TTS response attributes: {tts_attrs}")
+            tts_response.stream_to_file(temp_path)
+            logger.info(
+                "TTS streamed content size: %s bytes",
+                os.path.getsize(temp_path) if os.path.exists(temp_path) else 0,
+            )
         
         # If we got here, the API key is working
         return jsonify({

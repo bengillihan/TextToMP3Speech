@@ -32,6 +32,7 @@
                 <div class="mb-3">
                     <p class="mb-1"><strong>Created:</strong> {{ format_seattle_time(conversion.created_at, '%Y-%m-%d %H:%M') }} (Seattle time)</p>
                     <p class="mb-1"><strong>Mode:</strong> {{ conversion.tts_model_label }}</p>
+                    <p class="mb-1"><strong>Storage:</strong> {{ conversion.retention_label }}</p>
                     <p class="mb-1"><strong>Text Length:</strong> {{ conversion.text|length }} characters</p>
                     {% if conversion.metrics %}
                     <p class="mb-1"><strong>Chunks:</strong> {{ conversion.metrics.chunk_count }}</p>
@@ -64,6 +65,14 @@
                 </div>
             </div>
             <div class="card-footer">
+                <form class="d-flex gap-2 mb-3" method="POST" action="{{ url_for('update_conversion_retention', uuid=conversion.uuid) }}">
+                    <select class="form-select form-select-sm" name="retention_policy" aria-label="Storage retention for {{ conversion.title }}">
+                        {% for value, label in retention_policy_choices %}
+                        <option value="{{ value }}" {% if conversion.retention_policy_value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Save</button>
+                </form>
                 <div class="d-flex justify-content-between">
                     {% if conversion.status == 'completed' %}
                     <a href="{{ url_for('download_conversion', uuid=conversion.uuid) }}" class="btn btn-success download-btn">

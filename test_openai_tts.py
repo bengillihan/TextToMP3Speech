@@ -18,15 +18,13 @@ try:
     temp_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
     temp_file.close()
     
-    # Try a simple TTS API call
-    response = client.audio.speech.create(
+    # Try a simple TTS API call and stream the audio directly to disk.
+    with client.audio.speech.with_streaming_response.create(
         model="tts-1",
         voice="alloy",
         input="Hello, this is a test of the OpenAI TTS API."
-    )
-    
-    # Save the audio to the temporary file
-    response.stream_to_file(temp_file.name)
+    ) as response:
+        response.stream_to_file(temp_file.name)
     
     # Check if the file exists and has content
     file_size = os.path.getsize(temp_file.name)
