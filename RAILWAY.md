@@ -8,7 +8,7 @@ Railway can use the included `Procfile`:
 gunicorn -c gunicorn.conf.py main:app
 ```
 
-`.python-version` pins deploys to Python 3.12, and `nixpacks.toml` sets the same start command and installs `ffmpeg`, which the audio combiner needs at runtime.
+`.python-version` pins deploys to Python 3.12, and `nixpacks.toml` sets the same start command. Nixpacks provides `ffmpeg-headless` for the audio combiner at runtime.
 
 The default Gunicorn settings favor low idle cost:
 

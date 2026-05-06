@@ -1,0 +1,10 @@
+.git
+.venv
+.uv-cache
+__pycache__/
+*.py[cod]
+.DS_Store
+*.dump
+railway-*.dump
+neon-*.dump
+persistent_audio_files/
