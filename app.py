@@ -1,12 +1,29 @@
 import os
 import logging
+from urllib.parse import urlparse
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from sqlalchemy.orm import DeclarativeBase
 
+
+def _env_flag(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_domain(value):
+    if not value:
+        return ""
+    parsed = urlparse(value if "://" in value else f"https://{value}")
+    return (parsed.netloc or parsed.path).strip("/")
+
+
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
 logger = logging.getLogger(__name__)
 
 # Create database base class
@@ -20,6 +37,19 @@ login_manager = LoginManager()
 # Create the app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET")
+app.config["OAUTH_REDIRECT_DOMAIN"] = _normalize_domain(
+    os.environ.get("OAUTH_REDIRECT_DOMAIN")
+    or os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+    or os.environ.get("REPLIT_DOMAIN")
+)
+app.config["DIAGNOSTICS_ENABLED"] = _env_flag("DIAGNOSTICS_ENABLED", False)
+app.config["DIAGNOSTIC_ADMIN_EMAILS"] = {
+    email.strip().lower()
+    for email in os.environ.get("DIAGNOSTIC_ADMIN_EMAILS", "").split(",")
+    if email.strip()
+}
+auto_create_default = not bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+app.config["AUTO_CREATE_TABLES"] = _env_flag("AUTO_CREATE_TABLES", auto_create_default)
 
 # Configure the database
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
@@ -33,9 +63,6 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["AUDIO_STORAGE_PATH"] = os.path.expanduser("~/persistent_audio_files")
 os.makedirs(app.config["AUDIO_STORAGE_PATH"], exist_ok=True)
 app.config["CONVERSION_RETENTION_DAYS"] = int(os.environ.get("CONVERSION_RETENTION_DAYS", "90"))
-app.config["CONVERSION_CLEANUP_INTERVAL_SECONDS"] = int(
-    os.environ.get("CONVERSION_CLEANUP_INTERVAL_SECONDS", str(24 * 60 * 60))
-)
 
 # Configure OpenAI
 app.config["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY")
@@ -45,46 +72,13 @@ db.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'google_auth.login'
 
-# Display the Google OAuth redirect URIs that need to be registered
-# Check for all possible domains
-oauth_domain = os.environ.get("OAUTH_REDIRECT_DOMAIN", "")
-prod_domain = os.environ.get("REPLIT_DOMAIN", "")
-dev_domain = os.environ.get("REPLIT_DEV_DOMAIN", "")
-hardcoded_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
-
-# For the current domain issues in the error
-error_domains = [
-    "284699a3-738e-48f9-8868-5f261bc94a86-00-uw70cafxtgnu.worf.replit.dev",
-    "d392d3ac-1fa5-4659-b09e-923dcc8eee09-00-21tb74ah7mo9j.worf.replit.dev"  # New error domain
-]
-
-logger.info("="*80)
-logger.info(f"IMPORTANT: Register these OAuth redirect URIs in Google Cloud Console:")
-
-if oauth_domain:
-    oauth_redirect_uri = f"https://{oauth_domain}/google_login/callback"
-    logger.info(f"Custom OAuth URI: {oauth_redirect_uri}")
-
-if prod_domain:
-    prod_redirect_uri = f"https://{prod_domain}/google_login/callback"
-    logger.info(f"Production URI: {prod_redirect_uri}")
-
-if dev_domain:
-    dev_redirect_uri = f"https://{dev_domain}/google_login/callback"
-    logger.info(f"Development URI: {dev_redirect_uri}")
-
-# Add the hardcoded production domain
-hardcoded_redirect_uri = f"https://{hardcoded_domain}/google_login/callback"
-logger.info(f"Hardcoded Production URI: {hardcoded_redirect_uri}")
-
-# Add the error domains from the error message
-for i, error_domain in enumerate(error_domains):
-    error_redirect_uri = f"https://{error_domain}/google_login/callback"
-    logger.info(f"Error Domain URI {i+1}: {error_redirect_uri}")
-
-logger.info("="*80)
-logger.info("IMPORTANT: Make sure to add ALL these URIs to your Google OAuth consent screen")
-logger.info("="*80)
+if app.config["OAUTH_REDIRECT_DOMAIN"]:
+    logger.info(
+        "Google OAuth redirect URI: https://%s/google_login/callback",
+        app.config["OAUTH_REDIRECT_DOMAIN"],
+    )
+else:
+    logger.info("Set OAUTH_REDIRECT_DOMAIN to force a stable Google OAuth callback domain.")
 
 # Import models (must be imported after db initialization)
 with app.app_context():
@@ -96,7 +90,8 @@ with app.app_context():
     # Register blueprints
     app.register_blueprint(google_auth, url_prefix='/google_login')
     
-    # Create database tables
-    db.create_all()
-    
-    logger.info("Database tables created")
+    if app.config["AUTO_CREATE_TABLES"]:
+        db.create_all()
+        logger.info("Database tables created")
+    else:
+        logger.info("Skipping db.create_all because AUTO_CREATE_TABLES is disabled")

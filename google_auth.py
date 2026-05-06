@@ -33,6 +33,10 @@ client = WebApplicationClient(GOOGLE_CLIENT_ID)
 google_auth = Blueprint("google_auth", __name__)
 
 
+def configured_oauth_domain():
+    return current_app.config.get("OAUTH_REDIRECT_DOMAIN", "")
+
+
 @google_auth.route("/login")
 def login():
     """Google login route"""
@@ -44,43 +48,34 @@ def login():
         current_app.logger.error(f"Error fetching Google auth endpoint: {str(e)}")
         return "Error contacting Google authentication service. Please try again later.", 500
 
-    # Use library to construct the request for Google login
-    # CRITICAL: When accessing from production, ALWAYS use the production domain
-    # Check if this is a request coming from the production domain
+    # Use library to construct the request for Google login.
     referer = request.headers.get('Referer', '')
     request_domain = request.host
     request_url = request.url
     origin = request.headers.get('Origin', '')
     
     # Log all domains and headers for debugging
-    current_app.logger.info(f"OAuth Login - Referer: {referer}")
-    current_app.logger.info(f"OAuth Login - Request host: {request_domain}")
-    current_app.logger.info(f"OAuth Login - Request URL: {request_url}")
-    current_app.logger.info(f"OAuth Login - Origin: {origin}")
+    current_app.logger.debug(f"OAuth Login - Referer: {referer}")
+    current_app.logger.debug(f"OAuth Login - Request host: {request_domain}")
+    current_app.logger.debug(f"OAuth Login - Request URL: {request_url}")
+    current_app.logger.debug(f"OAuth Login - Origin: {origin}")
     
     # Determine which domain to use for the callback
-    production_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
-    
-    # Check if this is the production domain
-    if production_domain in request_domain:
-        # CRITICAL: If we're on the production domain, always force the production redirect URI
-        is_production = True
-        redirect_uri = f"https://{production_domain}/google_login/callback"
-        current_app.logger.info(f"OAuth Login - FORCED PRODUCTION redirect URI (by host): {redirect_uri}")
-    elif production_domain in referer:
-        # If the referrer contains the production domain, use it
-        is_production = True
-        redirect_uri = f"https://{production_domain}/google_login/callback"
-        current_app.logger.info(f"OAuth Login - FORCED PRODUCTION redirect URI (by referer): {redirect_uri}")
+    oauth_domain = configured_oauth_domain()
+
+    if oauth_domain:
+        use_configured_domain = True
+        redirect_uri = f"https://{oauth_domain}/google_login/callback"
+        current_app.logger.debug(f"OAuth Login - configured redirect URI: {redirect_uri}")
     else:
         # For development environment, use the current domain
-        is_production = False
+        use_configured_domain = False
         redirect_uri = f"https://{request_domain}/google_login/callback"
-        current_app.logger.info(f"OAuth Login - Using DEVELOPMENT redirect URI: {redirect_uri}")
+        current_app.logger.debug(f"OAuth Login - Using DEVELOPMENT redirect URI: {redirect_uri}")
     
     # Store the domain used in the session to ensure consistent domain use in callback
-    session['oauth_domain'] = production_domain if is_production else request_domain
-    session['is_production'] = is_production
+    session['oauth_domain'] = oauth_domain if use_configured_domain else request_domain
+    session['is_production'] = use_configured_domain
     
     try:
         # Prepare the request URI
@@ -89,7 +84,7 @@ def login():
             redirect_uri=redirect_uri,
             scope=["openid", "email", "profile"],
         )
-        current_app.logger.info(f"OAuth Login - Request URI: {request_uri}")
+        current_app.logger.debug("OAuth Login - prepared Google authorization request")
         return redirect(request_uri)
     except Exception as e:
         current_app.logger.error(f"OAuth Login - Error preparing request: {str(e)}")
@@ -114,62 +109,50 @@ def callback():
             current_app.logger.error(f"OAuth Callback - Error fetching Google token endpoint: {str(e)}")
             return "Error contacting Google authentication service. Please try again later.", 500
         
-        # CRITICAL: When accessing from production, ALWAYS use the production domain
-        # Check if this is a request coming from the production domain
+        # Match the callback domain to the login request.
         referer = request.headers.get('Referer', '')
         request_domain = request.host
-        request_url = request.url
         
         # Log all domains and headers for debugging
-        current_app.logger.info(f"OAuth Callback - Referer: {referer}")
-        current_app.logger.info(f"OAuth Callback - Request host: {request_domain}")
-        current_app.logger.info(f"OAuth Callback - Request URL: {request_url}")
+        current_app.logger.debug(f"OAuth Callback - Referer: {referer}")
+        current_app.logger.debug(f"OAuth Callback - Request host: {request_domain}")
         
         # Determine which domain to use for the callback
-        production_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
+        oauth_domain = configured_oauth_domain()
         
         # Check if we have session data from the login step
         session_domain = session.get('oauth_domain')
         session_is_production = session.get('is_production', False)
         
-        current_app.logger.info(f"OAuth Callback - Session domain: {session_domain}")
-        current_app.logger.info(f"OAuth Callback - Session is_production: {session_is_production}")
+        current_app.logger.debug(f"OAuth Callback - Session domain: {session_domain}")
+        current_app.logger.debug(f"OAuth Callback - Session is_production: {session_is_production}")
         
-        # CRITICAL: If we're on the production domain or coming from it, ALWAYS use production domain
-        if production_domain in request_domain:
-            # If the request is directly on the production domain
-            domain_to_use = production_domain
-            current_app.logger.info(f"OAuth Callback - FORCED production domain (request on production): {domain_to_use}")
-        elif production_domain in referer:
-            # If the referrer contains the production domain
-            domain_to_use = production_domain
-            current_app.logger.info(f"OAuth Callback - FORCED production domain (referer): {domain_to_use}")
-        elif session_is_production:
-            # If the session indicates we started on production
-            domain_to_use = production_domain
-            current_app.logger.info(f"OAuth Callback - FORCED production domain (session): {domain_to_use}")
+        if oauth_domain:
+            domain_to_use = oauth_domain
+            current_app.logger.debug(f"OAuth Callback - configured domain: {domain_to_use}")
+        elif session_is_production and session_domain:
+            domain_to_use = session_domain
+            current_app.logger.debug(f"OAuth Callback - using configured session domain: {domain_to_use}")
         elif session_domain:
             # Use the domain we stored in the session
             domain_to_use = session_domain
-            current_app.logger.info(f"OAuth Callback - Using session domain: {domain_to_use}")
+            current_app.logger.debug(f"OAuth Callback - Using session domain: {domain_to_use}")
         else:
             # Fallback to using the current domain (for development)
             domain_to_use = request_domain
-            current_app.logger.info(f"OAuth Callback - Using current request domain: {domain_to_use}")
+            current_app.logger.debug(f"OAuth Callback - Using current request domain: {domain_to_use}")
         
         # Always use the determined domain for redirect
         redirect_url = f"https://{domain_to_use}/google_login/callback"
-        current_app.logger.info(f"OAuth Callback - Final redirect URL: {redirect_url}")
+        current_app.logger.debug(f"OAuth Callback - Final redirect URL: {redirect_url}")
         
         # Prepare and send a request to get tokens
         try:
-            current_app.logger.info(f"OAuth Callback - Authorization response URL: {request.url}")
-            
             # Make sure we're using https, even if the request came in via http
             authorization_response = request.url
             if authorization_response.startswith('http:'):
                 authorization_response = authorization_response.replace('http:', 'https:', 1)
-                current_app.logger.info(f"OAuth Callback - Converted authorization response to HTTPS: {authorization_response}")
+                current_app.logger.debug("OAuth Callback - converted authorization response to HTTPS")
             
             token_url, headers, body = client.prepare_token_request(
                 token_endpoint,

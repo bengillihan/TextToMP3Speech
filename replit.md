@@ -86,7 +86,7 @@ This is a Flask-based web application that converts text to speech using OpenAI'
 - **Debug Mode**: Comprehensive logging and error reporting
 
 ### Production Configuration
-- **Autoscale Deployment**: Replit's autoscale target for production workloads
+- **Railway Deployment**: Gunicorn runs from `Procfile` with one worker by default to keep idle memory low
 - **Environment Variables**: Secure configuration for API keys and database URLs
 - **Health Monitoring**: Application health checks and error handling
 
@@ -94,7 +94,8 @@ This is a Flask-based web application that converts text to speech using OpenAI'
 - **Migration Strategy**: Manual schema updates (recommended to add Flask-Migrate)
 - **Connection Pooling**: SQLAlchemy connection pool with pre-ping health checks
 - **Data Persistence**: Persistent storage for user data and conversion history
-- **Retention Policy**: Conversions older than `CONVERSION_RETENTION_DAYS` are automatically deleted, including related logs, metrics, and generated audio files. Defaults to 90 days.
+- **Retention Policy**: Run `python -m flask --app main cleanup-conversions` on a Railway schedule to delete conversions older than `CONVERSION_RETENTION_DAYS`, including related logs, metrics, and generated audio files. Defaults to 90 days.
+- **Diagnostics**: Production diagnostics are disabled by default. Enable temporarily with `DIAGNOSTICS_ENABLED=true` and `DIAGNOSTIC_ADMIN_EMAILS`.
 
 ## Changelog
 - June 27, 2025. Initial setup

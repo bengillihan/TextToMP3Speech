@@ -1,8 +1,10 @@
 import os
 import re
 import time
+import click
 import logging
 import traceback
+from functools import wraps
 from datetime import datetime
 from flask import render_template, flash, redirect, url_for, request, jsonify, send_file, session
 from flask_login import login_user, logout_user, current_user, login_required
@@ -16,44 +18,46 @@ from utils import cleanup_expired_conversions, cleanup_old_files
 from timezone_utils import format_seattle_time
 
 logger = logging.getLogger(__name__)
-_last_expired_cleanup_at = None
 
 
-@app.before_request
-def run_scheduled_conversion_cleanup():
-    """Run retention cleanup at most once per interval for this app process."""
-    global _last_expired_cleanup_at
+def diagnostics_required(view):
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if not app.config.get("DIAGNOSTICS_ENABLED"):
+            return jsonify({"error": "Diagnostics are disabled"}), 404
 
-    if request.endpoint == 'static':
-        return
+        if not current_user.is_authenticated:
+            return jsonify({"error": "Authentication required"}), 401
 
-    now = datetime.utcnow()
-    interval_seconds = app.config.get("CONVERSION_CLEANUP_INTERVAL_SECONDS", 24 * 60 * 60)
-    if (
-        _last_expired_cleanup_at
-        and (now - _last_expired_cleanup_at).total_seconds() < interval_seconds
-    ):
-        return
+        admin_emails = app.config.get("DIAGNOSTIC_ADMIN_EMAILS", set())
+        current_email = (getattr(current_user, "email", "") or "").lower()
+        if not admin_emails or current_email not in admin_emails:
+            return jsonify({"error": "Admin access required"}), 403
 
-    _last_expired_cleanup_at = now
+        return view(*args, **kwargs)
 
-    try:
-        retention_days = app.config.get("CONVERSION_RETENTION_DAYS", 90)
-        result = cleanup_expired_conversions(retention_days=retention_days, now=now)
-        if result["conversions"]:
-            logger.info(
-                "Automatic conversion cleanup removed %s conversions and %s files",
-                result["conversions"],
-                result["files"],
-            )
-    except Exception as e:
-        logger.error(f"Automatic conversion cleanup failed: {str(e)}")
+    return wrapped_view
+
+
+@app.cli.command("cleanup-conversions")
+@click.option("--retention-days", type=int, default=None, help="Days of conversion history to keep.")
+def cleanup_conversions_command(retention_days):
+    """Delete expired conversions without running work during web requests."""
+    retention_days = retention_days or app.config.get("CONVERSION_RETENTION_DAYS", 90)
+    result = cleanup_expired_conversions(retention_days=retention_days)
+    click.echo(
+        "Deleted {conversions} conversions and {files} files older than {days} days.".format(
+            conversions=result["conversions"],
+            files=result["files"],
+            days=retention_days,
+        )
+    )
 
 @app.route('/')
 def index():
     # Check and log the OpenAI API key status on app startup for debugging
     api_key = app.config.get("OPENAI_API_KEY")
-    logger.info(f"OpenAI API key status: {'Available and valid format' if api_key and api_key.startswith('sk-') else 'Missing or invalid format'}")
+    logger.debug(f"OpenAI API key status: {'Available and valid format' if api_key and api_key.startswith('sk-') else 'Missing or invalid format'}")
     
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
@@ -79,27 +83,27 @@ def register():
     referer = request.headers.get('Referer', '')
     request_domain = request.host
     request_url = request.url
-    production_domain = "text-to-mp-3-speech-bdgillihan.replit.app"
+    oauth_domain = app.config.get("OAUTH_REDIRECT_DOMAIN", "")
     
     # Log information for debugging
-    logger.info(f"Register Referer: {referer}")
-    logger.info(f"Register Request host domain: {request_domain}")
-    logger.info(f"Register Request URL: {request_url}")
+    logger.debug(f"Register Referer: {referer}")
+    logger.debug(f"Register Request host domain: {request_domain}")
+    logger.debug(f"Register Request URL: {request_url}")
     
     # CRITICAL: If we're on the production domain, special handling needed
-    if production_domain in request_domain:
+    if oauth_domain and oauth_domain in request_domain:
         # We are directly on the production domain
-        logger.info("PRODUCTION DOMAIN DETECTED: Direct access on production domain for registration")
+        logger.info("Configured OAuth domain detected for registration")
         # Set a marker in the session that we're on production
         session['is_production'] = True
-        session['oauth_domain'] = production_domain
+        session['oauth_domain'] = oauth_domain
         return redirect(url_for('google_auth.login'))
-    elif production_domain in referer:
+    elif oauth_domain and oauth_domain in referer:
         # We got here from the production domain
-        logger.info("PRODUCTION DOMAIN DETECTED: Referred from production domain for registration")
+        logger.info("Configured OAuth domain detected in referer for registration")
         # Set a marker in the session that we're on production
         session['is_production'] = True
-        session['oauth_domain'] = production_domain
+        session['oauth_domain'] = oauth_domain
         return redirect(url_for('google_auth.login'))
     
     # For development environment, proceed normally
@@ -376,8 +380,9 @@ def internal_error(error):
 
 
 @app.route('/diagnostic/openai')
+@diagnostics_required
 def openai_diagnostic():
-    """Diagnostic endpoint for OpenAI API - does not require authentication"""
+    """Admin-only diagnostic endpoint for OpenAI API."""
     try:
         from openai import OpenAI
         # Try to get API key from Flask config first, then fall back to environment
@@ -432,8 +437,9 @@ def openai_diagnostic():
 
 
 @app.route('/diagnostic/conversion/<uuid>')
+@diagnostics_required
 def conversion_diagnostic(uuid):
-    """Diagnostic endpoint to get detailed conversion information - does not require authentication"""
+    """Admin-only endpoint to get detailed conversion information."""
     try:
         conversion = Conversion.query.filter_by(uuid=uuid).first()
         if not conversion:
@@ -487,6 +493,7 @@ def conversion_diagnostic(uuid):
         }), 500
 
 @app.route('/diagnostic/conversion_logs/<uuid>')
+@diagnostics_required
 def conversion_logs_diagnostic(uuid):
     """Get detailed logs for a conversion"""
     try:
@@ -521,6 +528,7 @@ def conversion_logs_diagnostic(uuid):
         }), 500
 
 @app.route('/diagnostic/all_conversions')
+@diagnostics_required
 def all_conversions_diagnostic():
     """Get status of all conversions"""
     try:
@@ -548,8 +556,9 @@ def all_conversions_diagnostic():
         }), 500
 
 @app.route('/diagnostic/restart_conversion/<uuid>')
+@diagnostics_required
 def restart_conversion_diagnostic(uuid):
-    """Diagnostic endpoint to restart a conversion - does not require authentication"""
+    """Admin-only endpoint to restart a conversion."""
     try:
         conversion = Conversion.query.filter_by(uuid=uuid).first()
         if not conversion:
@@ -585,6 +594,7 @@ def restart_conversion_diagnostic(uuid):
         }), 500
 
 @app.route('/diagnostic/force_reset_conversion/<uuid>')
+@diagnostics_required
 def force_reset_conversion_diagnostic(uuid):
     """Forcefully reset a conversion that appears to be stuck"""
     try:
@@ -662,9 +672,9 @@ def force_reset_conversion_diagnostic(uuid):
         }), 500
 
 @app.route('/api_health_check')
-@login_required
+@diagnostics_required
 def api_health_check():
-    """Check if the OpenAI API is working properly (authenticated)"""
+    """Admin-only OpenAI API health check."""
     try:
         from openai import OpenAI
         # Try to get API key from Flask config first, then fall back to environment
