@@ -61,7 +61,7 @@ def cleanup_conversions_command(retention_days):
     retention_days = retention_days or app.config.get("CONVERSION_RETENTION_DAYS", 90)
     result = cleanup_expired_conversions(retention_days=retention_days)
     click.echo(
-        "Deleted {conversions} conversions and {files} files older than {days} days.".format(
+        "Deleted {conversions} expired conversions and {files} files. Default retention is {days} days.".format(
             conversions=result["conversions"],
             files=result["files"],
             days=retention_days,
@@ -539,6 +539,9 @@ def conversion_diagnostic(uuid):
                 'voice': conversion.voice,
                 'tts_model': conversion.tts_model,
                 'tts_model_label': conversion.tts_model_label,
+                'keep_forever': conversion.keep_forever,
+                'retention_days': conversion.retention_days,
+                'retention_label': conversion.retention_label,
                 'status': conversion.status,
                 'progress': conversion.progress,
                 'file_path': conversion.file_path,
@@ -605,6 +608,9 @@ def all_conversions_diagnostic():
             'voice': conv.voice,
             'tts_model': conv.tts_model,
             'tts_model_label': conv.tts_model_label,
+            'keep_forever': conv.keep_forever,
+            'retention_days': conv.retention_days,
+            'retention_label': conv.retention_label,
             'created_at': format_seattle_time(conv.created_at),
             'updated_at': format_seattle_time(conv.updated_at)
         } for conv in conversions]

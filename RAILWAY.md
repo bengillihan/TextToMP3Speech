@@ -45,7 +45,7 @@ Run this command from a Railway cron/scheduled job, typically once per day:
 python -m flask --app main cleanup-conversions
 ```
 
-This deletes expired conversions, related logs/metrics, and generated audio files. Keeping this as a scheduled job avoids doing cleanup work during normal web requests.
+This deletes expired unpinned conversions, related logs/metrics, and generated audio files. Users can pin conversions to keep them or select shorter auto-delete windows. Keeping this as a scheduled job avoids doing cleanup work during normal web requests.
 
 ## Database Indexes
 
