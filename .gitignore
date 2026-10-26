@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.uv-cache/
+
+# Database dumps (contain user data)
+*.dump
+
+# Local audio output
+persistent_audio_files/
+
+.DS_Store
