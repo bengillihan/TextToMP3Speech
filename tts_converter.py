@@ -1,33 +1,19 @@
 import os
 import asyncio
-import aiohttp
 import time
 import logging
 import uuid
 import traceback
-import sys
 from datetime import datetime
-from pydub import AudioSegment
 from threading import Thread
 
 # Import the OpenAI client - using the latest SDK
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI
 from app import app, db
 from models import Conversion, ConversionMetrics, APILog, normalize_tts_model
 
-# Set up detailed logging to both file and console
+# Uses the root logging config from app.py (LOG_LEVEL env var)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-# Create console handler
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.DEBUG)
-console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(console_formatter)
-
-# Add the handlers to the logger
-if not logger.handlers:
-    logger.addHandler(console_handler)
 
 # Global dictionary to keep track of cancellation requests
 cancellation_requests = {}
@@ -38,7 +24,7 @@ def cancel_conversion(conversion_id):
     
     # Update the conversion status in the database
     with app.app_context():
-        conversion = Conversion.query.get(conversion_id)
+        conversion = db.session.get(Conversion, conversion_id)
         if conversion and conversion.status in ['pending', 'processing']:
             conversion.status = 'cancelled'
             conversion.updated_at = datetime.utcnow()
@@ -88,7 +74,7 @@ def _process_conversion_thread(conversion_id):
         asyncio.set_event_loop(loop)
         
         # Log that we're about to start the conversion process
-        logger.info(f"About to start conversion process for conversion_id: {conversion_id}")
+        logger.debug(f"About to start conversion process for conversion_id: {conversion_id}")
         
         # Run the conversion process
         loop.run_until_complete(_process_conversion(conversion_id))
@@ -100,8 +86,8 @@ def _process_conversion_thread(conversion_id):
         logger.error(f"Traceback: {traceback.format_exc()}")
         
         with app.app_context():
-            logger.info(f"Updating database with error for conversion_id: {conversion_id}")
-            conversion = Conversion.query.get(conversion_id)
+            logger.debug(f"Updating database with error for conversion_id: {conversion_id}")
+            conversion = db.session.get(Conversion, conversion_id)
             if conversion:
                 conversion.status = 'failed'
                 db.session.add(APILog(
@@ -110,7 +96,7 @@ def _process_conversion_thread(conversion_id):
                     message=f"Thread error: {str(e)}"
                 ))
                 db.session.commit()
-                logger.info(f"Database updated with error for conversion_id: {conversion_id}")
+                logger.debug(f"Database updated with error for conversion_id: {conversion_id}")
     finally:
         # Clean up
         if conversion_id in cancellation_requests:
@@ -124,14 +110,14 @@ async def _process_conversion(conversion_id):
     chunking_start = time.time()
     
     with app.app_context():
-        logger.info(f"Entering app context for conversion_id: {conversion_id}")
+        logger.debug(f"Entering app context for conversion_id: {conversion_id}")
         # Get the conversion from the database
-        conversion = Conversion.query.get(conversion_id)
+        conversion = db.session.get(Conversion, conversion_id)
         if not conversion:
             logger.error(f"Conversion with ID {conversion_id} not found")
             return
         
-        logger.info(f"Found conversion in database: {conversion.id}, title: {conversion.title}")
+        logger.debug(f"Found conversion in database: {conversion.id}, title: {conversion.title}")
         
         # Initialize metrics
         metrics = ConversionMetrics(conversion_id=conversion_id)
@@ -165,11 +151,11 @@ async def _process_conversion(conversion_id):
         
         # More robust chunking algorithm that handles various text formats
         # First, normalize line endings and replace multiple spaces with single spaces
-        logger.info("Normalizing text format")
+        logger.debug("Normalizing text format")
         normalized_text = text.replace('\r\n', '\n').replace('\r', '\n')
         
         # Try to split at sentence boundaries (looking for various sentence-ending punctuation)
-        logger.info("Splitting text at sentence boundaries")
+        logger.debug("Splitting text at sentence boundaries")
         
         # Use a regex to split on common sentence boundaries
         import re
@@ -292,12 +278,12 @@ async def _process_conversion(conversion_id):
                 db.session.commit()
                 return
                 
-            logger.info(f"Initializing AsyncOpenAI client with API key: {'valid key (starts with ' + api_key[:4] + '...)' if api_key.startswith('sk-') else 'invalid key format!'}")
+            logger.debug("Initializing AsyncOpenAI client")
             client = AsyncOpenAI(
                 api_key=api_key,
                 timeout=60.0  # 60 second timeout for API calls
             )
-            logger.info("AsyncOpenAI client created with timeout settings")
+            logger.debug("AsyncOpenAI client created with timeout settings")
         except Exception as e:
             error_message = f"Failed to initialize AsyncOpenAI client: {str(e)}"
             logger.error(error_message)
@@ -496,11 +482,11 @@ async def _process_conversion(conversion_id):
 
 async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, temp_audio_files):
     """Process a single text chunk with the OpenAI TTS API"""
-    logger.info(f"Processing chunk {chunk_index} for conversion_id: {conversion_id}")
+    logger.debug(f"Processing chunk {chunk_index} for conversion_id: {conversion_id}")
     try:
         with app.app_context():
-            logger.info(f"Entering app context for chunk {chunk_index}, conversion_id: {conversion_id}")
-            conversion = Conversion.query.get(conversion_id)
+            logger.debug(f"Entering app context for chunk {chunk_index}, conversion_id: {conversion_id}")
+            conversion = db.session.get(Conversion, conversion_id)
             if should_cancel(conversion_id):
                 logger.info(f"Chunk {chunk_index} cancelled for conversion_id: {conversion_id}")
                 return
@@ -508,21 +494,18 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
             # Get the voice from the conversion record
             voice = conversion.voice if conversion.voice else "onyx"
             tts_model = normalize_tts_model(conversion.tts_model)
-            logger.info(f"Using voice '{voice}' and model '{tts_model}' for chunk {chunk_index}")
+            logger.debug(f"Using voice '{voice}' and model '{tts_model}' for chunk {chunk_index}")
             
-            # Log OpenAI API key status (without revealing the key)
-            logger.info(f"Checking OpenAI API key for chunk {chunk_index}")
             api_key = app.config.get("OPENAI_API_KEY")
             if not api_key:
                 error_msg = "OpenAI API key is missing"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
-            logger.info("OpenAI API key is available")
             
             # Create the temporary file path
             temp_file_path = os.path.join(audio_dir, f"{chunk_index}_chunk.mp3")
             
-            logger.info(f"Calling OpenAI API for chunk {chunk_index}, conversion_id: {conversion_id}")
+            logger.debug(f"Calling OpenAI API for chunk {chunk_index}, conversion_id: {conversion_id}")
             # Call the OpenAI API to generate speech with retries and exponential backoff
             max_retries = 3
             retry_delay = 1.0  # initial delay in seconds
@@ -537,15 +520,14 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                         # Double the delay for the next retry (exponential backoff)
                         retry_delay *= 2
                     
-                    logger.info(f"Streaming TTS audio directly to file for chunk {chunk_index}")
-                    logger.info(f"Making OpenAI TTS API call for chunk {chunk_index} with voice: {voice}, model: {tts_model}")
-                    logger.info(f"Text length for chunk {chunk_index}: {len(text)} characters")
+                    logger.debug(f"Streaming TTS audio directly to file for chunk {chunk_index}")
+                    logger.debug(f"Making OpenAI TTS API call for chunk {chunk_index} with voice: {voice}, model: {tts_model}")
+                    logger.debug(f"Text length for chunk {chunk_index}: {len(text)} characters")
                     
                     api_start_time = time.time()
                     try:
                         # Make the API call with enhanced debugging
-                        logger.info(f"About to make API call with model={tts_model}, voice={voice}, text length={len(text)}")
-                        logger.info(f"Using API key: {api_key[:4]}... (key format validation: valid={api_key.startswith('sk-')})")
+                        logger.debug(f"About to make API call with model={tts_model}, voice={voice}, text length={len(text)}")
                         
                         # Make the actual API call and stream audio directly to disk.
                         try:
@@ -559,7 +541,7 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                                 text=text,
                                 output_path=temp_file_path,
                             )
-                            logger.info(
+                            logger.debug(
                                 "Streaming TTS API call succeeded for chunk %s with status %s",
                                 chunk_index,
                                 status_code,
@@ -570,7 +552,7 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                             logger.error(f"Exception traceback: {traceback.format_exc()}")
                             raise
                         api_time = time.time() - api_start_time
-                        logger.info(f"OpenAI TTS API call successful for chunk {chunk_index} in {api_time:.2f} seconds")
+                        logger.debug(f"OpenAI TTS API call successful for chunk {chunk_index} in {api_time:.2f} seconds")
                     except Exception as api_error:
                         error_msg = str(api_error)
                         logger.error(f"OpenAI TTS API call failed for chunk {chunk_index}: {error_msg}")
@@ -610,7 +592,7 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
                     # Verify the file was created successfully
                     if os.path.exists(temp_file_path) and os.path.getsize(temp_file_path) > 0:
                         success = True
-                        logger.info(f"Verified streamed file exists: {temp_file_path} ({os.path.getsize(temp_file_path)} bytes)")
+                        logger.debug(f"Verified streamed file exists: {temp_file_path} ({os.path.getsize(temp_file_path)} bytes)")
                         break  # Success! Break out of retry loop
                     else:
                         raise Exception(f"Failed to create file or file is empty: {temp_file_path}")
@@ -646,7 +628,7 @@ async def process_chunk(client, conversion_id, chunk_index, text, audio_dir, tem
             
             # Add the file path to the list
             temp_audio_files.append(temp_file_path)
-            logger.info(f"Added chunk {chunk_index} to temp_audio_files, current count: {len(temp_audio_files)}")
+            logger.debug(f"Added chunk {chunk_index} to temp_audio_files, current count: {len(temp_audio_files)}")
             
             # Update progress - only commit to DB every 5 chunks or on last chunk to reduce locking
             metrics = conversion.get_latest_metrics()

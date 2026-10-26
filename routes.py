@@ -8,6 +8,8 @@ from functools import wraps
 from datetime import datetime
 from flask import render_template, flash, redirect, url_for, request, jsonify, send_file, session
 from flask_login import login_user, logout_user, current_user, login_required
+from sqlalchemy import func
+from sqlalchemy.orm import defer, with_expression
 from urllib.parse import urlparse
 
 from app import app, db
@@ -271,7 +273,11 @@ def update_conversion_retention(uuid):
 @app.route('/conversions')
 @login_required
 def conversions():
-    user_conversions = Conversion.query.filter_by(user_id=current_user.id).order_by(Conversion.created_at.desc()).all()
+    user_conversions = Conversion.query.filter_by(user_id=current_user.id).options(
+        defer(Conversion.text),
+        with_expression(Conversion.text_length, func.length(Conversion.text)),
+        with_expression(Conversion.text_preview, func.substr(Conversion.text, 1, 100)),
+    ).order_by(Conversion.created_at.desc()).all()
     # Pass the format_seattle_time utility to the template
     return render_template('conversions.html', 
                           title='My Conversions', 
@@ -284,7 +290,7 @@ def conversions():
 @login_required
 def conversion_progress(uuid):
     try:
-        logger.info(f"Fetching progress for conversion with UUID: {uuid}")
+        logger.debug(f"Fetching progress for conversion with UUID: {uuid}")
         conversion = Conversion.query.filter_by(uuid=uuid).first_or_404()
         
         # Check if the user has access to this conversion
@@ -292,7 +298,7 @@ def conversion_progress(uuid):
             logger.warning(f"Unauthorized access attempt for conversion {uuid} by user {current_user.id}")
             return jsonify({'error': 'Unauthorized'}), 403
         
-        logger.info(f"Progress for conversion {uuid}: status={conversion.status}, progress={conversion.progress}")
+        logger.debug(f"Progress for conversion {uuid}: status={conversion.status}, progress={conversion.progress}")
         
         stale_after_minutes = app.config.get("STUCK_CONVERSION_MINUTES", 15)
         if conversion.status == 'processing':
@@ -598,7 +604,7 @@ def conversion_logs_diagnostic(uuid):
 def all_conversions_diagnostic():
     """Get status of all conversions"""
     try:
-        conversions = Conversion.query.all()
+        conversions = Conversion.query.options(defer(Conversion.text)).all()
         conversion_data = [{
             'id': conv.id,
             'uuid': conv.uuid,
@@ -760,15 +766,11 @@ def api_health_check():
         # Create a client
         client = OpenAI(api_key=api_key)
         
-        # Try a simple completion to test the API key
-        logger.info("Testing OpenAI API key with a simple API call")
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": "Hello"}],
-            max_tokens=10
-        )
+        # List models to test the API key (free, unlike a completion call)
+        logger.info("Testing OpenAI API key with a models list call")
+        model_count = sum(1 for _ in client.models.list())
         
-        logger.info(f"OpenAI API test successful: {response.choices[0].message.content}")
+        logger.info(f"OpenAI API test successful: {model_count} models available")
         
         # Test TTS API specifically
         logger.info("Testing OpenAI TTS API")

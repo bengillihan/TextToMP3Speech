@@ -80,6 +80,12 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
     "pool_pre_ping": True,
 }
+if (app.config["SQLALCHEMY_DATABASE_URI"] or "").startswith("postgres"):
+    # Keep Postgres connections low; one worker rarely needs more than a few
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"].update(
+        pool_size=_env_int("DB_POOL_SIZE", 3, minimum=1),
+        max_overflow=_env_int("DB_MAX_OVERFLOW", 2, minimum=0),
+    )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Configure file storage

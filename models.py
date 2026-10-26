@@ -49,7 +49,7 @@ def retention_settings_from_policy(policy_value, default_days=DEFAULT_CONVERSION
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 
 class User(UserMixin, db.Model):
@@ -91,6 +91,10 @@ class Conversion(db.Model):
     file_path = db.Column(db.String(512), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Populated by list queries so pages don't load the full text column
+    text_length = db.query_expression()
+    text_preview = db.query_expression()
     
     # Define metrics relationship with simple one-to-many
     metrics = db.relationship('ConversionMetrics', backref='conversion', uselist=False,

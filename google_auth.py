@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import time
 from urllib.parse import urlparse
 
 import requests
@@ -25,6 +26,24 @@ def validate_google_url(url):
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
+GOOGLE_REQUEST_TIMEOUT = 10  # seconds
+GOOGLE_DISCOVERY_CACHE_SECONDS = 24 * 60 * 60
+
+_google_provider_cfg = None
+_google_provider_cfg_fetched_at = 0.0
+
+
+def get_google_provider_cfg():
+    """Fetch Google's OpenID discovery document, cached for a day."""
+    global _google_provider_cfg, _google_provider_cfg_fetched_at
+    if _google_provider_cfg and time.monotonic() - _google_provider_cfg_fetched_at < GOOGLE_DISCOVERY_CACHE_SECONDS:
+        return _google_provider_cfg
+
+    response = requests.get(GOOGLE_DISCOVERY_URL, timeout=GOOGLE_REQUEST_TIMEOUT)
+    response.raise_for_status()
+    _google_provider_cfg = response.json()
+    _google_provider_cfg_fetched_at = time.monotonic()
+    return _google_provider_cfg
 
 # Initialize OAuth client
 client = WebApplicationClient(GOOGLE_CLIENT_ID)
@@ -42,7 +61,7 @@ def login():
     """Google login route"""
     # Find out what URL to hit for Google login
     try:
-        google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
+        google_provider_cfg = get_google_provider_cfg()
         authorization_endpoint = validate_google_url(google_provider_cfg["authorization_endpoint"])
     except Exception as e:
         current_app.logger.error(f"Error fetching Google auth endpoint: {str(e)}")
@@ -103,7 +122,7 @@ def callback():
         
         # Find out what URL to hit to get tokens
         try:
-            google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
+            google_provider_cfg = get_google_provider_cfg()
             token_endpoint = validate_google_url(google_provider_cfg["token_endpoint"])
         except Exception as e:
             current_app.logger.error(f"OAuth Callback - Error fetching Google token endpoint: {str(e)}")
@@ -175,6 +194,7 @@ def callback():
                 headers=headers,
                 data=body,
                 auth=(google_client_id, google_client_secret),
+                timeout=GOOGLE_REQUEST_TIMEOUT,
             )
             
             if token_response.status_code != 200:
@@ -192,7 +212,7 @@ def callback():
         try:
             userinfo_endpoint = validate_google_url(google_provider_cfg["userinfo_endpoint"])
             uri, headers, body = client.add_token(userinfo_endpoint)
-            userinfo_response = requests.get(uri, headers=headers, data=body)
+            userinfo_response = requests.get(uri, headers=headers, data=body, timeout=GOOGLE_REQUEST_TIMEOUT)
             
             if userinfo_response.status_code != 200:
                 current_app.logger.error(f"OAuth Callback - User info request failed: {userinfo_response.status_code} {userinfo_response.text}")

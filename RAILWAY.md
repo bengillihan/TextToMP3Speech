@@ -18,6 +18,8 @@ The default Gunicorn settings favor low idle cost:
 
 Increase `WEB_CONCURRENCY` only if request traffic needs it. Each extra worker adds memory usage.
 
+`GUNICORN_MAX_REQUESTS` defaults to `0` (no worker recycling). Conversions run in background threads inside the web worker, so a recycled worker would kill in-flight conversions.
+
 ## Required Environment Variables
 
 - `DATABASE_URL`: Railway Postgres connection URL
@@ -33,6 +35,7 @@ Increase `WEB_CONCURRENCY` only if request traffic needs it. Each extra worker a
 - `STUCK_CONVERSION_MINUTES`: Minutes without a conversion update before it is considered interrupted. Defaults to `15`.
 - `RECOVER_STUCK_CONVERSIONS_ON_STARTUP`: Requeue stale `processing` conversions on app startup. Defaults to `true`.
 - `TTS_MAX_PARALLEL_CHUNKS`: Max parallel OpenAI TTS chunk requests per conversion. Defaults to `3` and is capped at `4`.
+- `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`: Postgres connection pool per worker. Default to `3` and `2`.
 - `AUTO_CREATE_TABLES`: Set to `false` on Railway after the database schema exists.
 - `DIAGNOSTICS_ENABLED`: Set to `true` only when diagnostics are needed.
 - `DIAGNOSTIC_ADMIN_EMAILS`: Comma-separated admin emails allowed to use diagnostics.

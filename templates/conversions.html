@@ -33,7 +33,7 @@
                     <p class="mb-1"><strong>Created:</strong> {{ format_seattle_time(conversion.created_at, '%Y-%m-%d %H:%M') }} (Seattle time)</p>
                     <p class="mb-1"><strong>Mode:</strong> {{ conversion.tts_model_label }}</p>
                     <p class="mb-1"><strong>Storage:</strong> {{ conversion.retention_label }}</p>
-                    <p class="mb-1"><strong>Text Length:</strong> {{ conversion.text|length }} characters</p>
+                    <p class="mb-1"><strong>Text Length:</strong> {{ conversion.text_length }} characters</p>
                     {% if conversion.metrics %}
                     <p class="mb-1"><strong>Chunks:</strong> {{ conversion.metrics.chunk_count }}</p>
                     {% if conversion.metrics.total_time %}
@@ -59,7 +59,7 @@
                     <h6>Text Preview:</h6>
                     <div class="card bg-dark">
                         <div class="card-body">
-                            <p class="text-muted mb-0">{{ conversion.text[:100] }}{% if conversion.text|length > 100 %}...{% endif %}</p>
+                            <p class="text-muted mb-0">{{ conversion.text_preview }}{% if conversion.text_length > 100 %}...{% endif %}</p>
                         </div>
                     </div>
                 </div>
