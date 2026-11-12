@@ -75,7 +75,14 @@ auto_create_default = not bool(os.environ.get("RAILWAY_ENVIRONMENT"))
 app.config["AUTO_CREATE_TABLES"] = _env_flag("AUTO_CREATE_TABLES", auto_create_default)
 
 # Configure the database
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+_db_url = os.environ.get("DATABASE_URL")
+if _db_url:
+    # SQLAlchemy 2.1 defaults bare postgresql:// to psycopg3; we ship psycopg2
+    if _db_url.startswith("postgres://"):
+        _db_url = "postgresql://" + _db_url[len("postgres://"):]
+    if _db_url.startswith("postgresql://"):
+        _db_url = "postgresql+psycopg2://" + _db_url[len("postgresql://"):]
+app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
     "pool_pre_ping": True,
