@@ -1,3 +1,10 @@
+[phases.install]
+# Pin uv explicitly: Nixpacks interpolates $NIXPACKS_UV_VERSION from service
+# variables, and an empty value breaks the build ("pip install uv==").
+cmds = [
+  "python -m venv --copies /opt/venv && . /opt/venv/bin/activate && pip install uv==0.4.30 && uv sync --no-dev --frozen",
+]
+
 [start]
-# Nixpacks' `uv sync` ignores VIRTUAL_ENV and installs into /app/.venv
+# `uv sync` ignores VIRTUAL_ENV and installs into /app/.venv
 cmd = "/app/.venv/bin/python -m gunicorn -c gunicorn.conf.py main:app"
