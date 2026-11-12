@@ -1,3 +1,7 @@
+[phases.setup]
+# ffmpeg is required at runtime to combine audio chunks
+nixPkgs = ["...", "ffmpeg-headless"]
+
 [phases.install]
 # Pin uv explicitly: Nixpacks interpolates $NIXPACKS_UV_VERSION from service
 # variables, and an empty value breaks the build ("pip install uv==").
