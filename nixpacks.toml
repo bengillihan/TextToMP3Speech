@@ -1,2 +1,6 @@
+[variables]
+# uv ignores VIRTUAL_ENV and would create /app/.venv; point it at the venv on PATH
+UV_PROJECT_ENVIRONMENT = "/opt/venv"
+
 [start]
 cmd = "python -m gunicorn -c gunicorn.conf.py main:app"
