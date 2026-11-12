@@ -82,6 +82,19 @@ if _db_url:
         _db_url = "postgresql://" + _db_url[len("postgres://"):]
     if _db_url.startswith("postgresql://"):
         _db_url = "postgresql+psycopg2://" + _db_url[len("postgresql://"):]
+if not _db_url:
+    raise RuntimeError("DATABASE_URL is not set or is empty")
+try:
+    from sqlalchemy.engine import make_url as _make_url
+    _make_url(_db_url)
+except Exception:
+    # Never log credentials: only report shape of the value
+    _scheme = _db_url.split("://", 1)[0] if "://" in _db_url else "<no scheme>"
+    raise RuntimeError(
+        f"DATABASE_URL is not a valid URL (length={len(_db_url)}, scheme={_scheme!r}, "
+        f"starts_with_${{={_db_url.startswith('${')}, has_whitespace={_db_url != _db_url.strip()}, "
+        f"has_quotes={_db_url[:1] in '\'\"'})"
+    ) from None
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
